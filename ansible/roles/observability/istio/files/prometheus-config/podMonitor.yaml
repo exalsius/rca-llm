@@ -1,0 +1,41 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: istio-ztunnel-monitor
+  namespace: observability
+  labels:
+    # `release: $HELM_RELEASE`: Prometheus can only detect PodMonitor with this label.
+    release: kube-prometheus-stack
+spec:
+  jobLabel: istio-ztunnel
+  namespaceSelector:
+    matchNames:
+      - istio-system
+  selector:
+    matchLabels:
+      app: ztunnel
+  podMetricsEndpoints:
+    - path: /stats/prometheus
+      port: ztunnel-stats
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: ray-waypoint-monitor
+  namespace: observability
+  labels:
+    # `release: $HELM_RELEASE`: Prometheus can only detect PodMonitor with this label.
+    release: kube-prometheus-stack
+spec:
+  jobLabel: ray-waypoint
+  namespaceSelector:
+    matchNames:
+      - ray
+  selector:
+    matchLabels:
+      gateway.networking.k8s.io/gateway-name: ray-waypoint
+  podMetricsEndpoints:
+    - path: /stats/prometheus
+      port: http-envoy-prom
+    - path: /metrics
+      port: metrics

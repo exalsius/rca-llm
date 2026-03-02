@@ -1,0 +1,57 @@
+---
+- name: Get the current date in ISO format
+  command: date +"%Y%m%d"
+  register: current_date_tstamp
+  changed_when: false
+
+- name: Set nginx auth user
+  ansible.builtin.set_fact:
+    nginx_auth_user_override: admin
+  when: nginx_auth_user_override is undefined
+
+- name: Create random nginx auth password
+  ansible.builtin.set_fact:
+    nginx_auth_password_override: "{{ lookup('ansible.builtin.password', '/dev/null', seed=current_date_tstamp.stdout) }}"
+  when: nginx_auth_password_override is undefined
+
+- name: Set nginx service NodePort
+  ansible.builtin.set_fact:
+    nginx_node_port_override: "30826"
+  when: nginx_node_port_override is undefined
+
+- debug:
+    msg: "Nginx Auth Credentials = {{ nginx_auth_user_override }} : {{ nginx_auth_password_override }} (NodePort: {{ nginx_node_port_override }})"
+
+- name: Generate password for basic nginx authentication (encrypted)
+  community.general.htpasswd:
+    path: "{{ role_path }}/../../fetched/nginx-auth"
+    name: "{{ nginx_auth_user_override }}"
+    password: "{{ nginx_auth_password_override }}"
+    crypt_scheme: md5_crypt
+
+- name: Remove plain password file if it exists
+  ansible.builtin.file:
+    path: "{{ role_path }}/../../fetched/nginx-auth-plain"
+    state: absent
+
+- name: Generate password for basic nginx authentication (plain)
+  community.general.htpasswd:
+    path: "{{ role_path }}/../../fetched/nginx-auth-plain"
+    name: "{{ nginx_auth_user_override }}"
+    password: "{{ nginx_auth_password_override }}"
+    crypt_scheme: plaintext
+
+- name: Read the generated password file
+  ansible.builtin.slurp:
+    src: "{{ role_path }}/../../fetched/nginx-auth"
+  register: auth_file_content
+
+- name: Encode password file content to base64
+  ansible.builtin.set_fact:
+    nginx_auth_encoded_data: "{{ auth_file_content['content'] | b64decode | b64encode }}"
+
+- name: Configure nginx proxy
+  kubernetes.core.k8s:
+    state: present
+    wait: true
+    template: "{{ role_path }}/templates/nginx-proxy.yaml.j2"

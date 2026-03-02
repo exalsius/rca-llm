@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ ray_service_ui_deployment_name }}
+  namespace: {{ ray_service_ui_namespace }}
+  labels:
+    app: {{ ray_service_ui_app_name | default(ray_service_ui_deployment_name) }}
+spec:
+  replicas: {{ ray_service_ui_replicas | default(1) }}
+  selector:
+    matchLabels:
+      app: {{ ray_service_ui_app_name | default(ray_service_ui_deployment_name) }}
+  template:
+    metadata:
+      labels:
+        app: {{ ray_service_ui_app_name | default(ray_service_ui_deployment_name) }}
+    spec:
+      containers:
+      - name: {{ ray_service_ui_container_name | default(ray_service_ui_app_name) | default(ray_service_ui_deployment_name) }}
+        image: {{ ray_service_ui_image }}
+        resources:
+          requests:
+            cpu: "{{ ray_service_ui_cpu_requests | default('250m') }}"
+            memory: "{{ ray_service_ui_memory_requests | default('512Mi') }}"
+          limits:
+            cpu: "{{ ray_service_ui_cpu_limits | default('500m') }}"
+            memory: "{{ ray_service_ui_memory_limits | default('512Mi') }}"
+        env:
+        - name: CONTEXT_PATH
+          value: "{{ ray_service_ui_context_path }}"
+        - name: HOST
+          value: "{{ exp_global_host }}"
+        - name: MODEL_ID
+          value: "{{ exp_global_model_name | default(exp_global_model_id) }}"
+        ports:
+        - containerPort: {{ ray_service_ui_container_port | default(7860) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ ray_service_ui_service_name }}
+  namespace: {{ ray_service_ui_namespace }}
+spec:
+  selector:
+    app: {{ ray_service_ui_app_name | default(ray_service_ui_deployment_name) }}
+  ports:
+    - protocol: TCP
+      port: {{ ray_service_ui_service_port | default(8080) }}
+      targetPort: {{ ray_service_ui_container_port | default(7860) }}
+  type: {{ ray_service_ui_service_type | default('ClusterIP') }}

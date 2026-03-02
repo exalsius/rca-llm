@@ -1,0 +1,15 @@
+---
+- name: Deploy KubeRay Operator
+  ansible.builtin.include_tasks:
+    file: install_helm.yaml
+  when: install_ray_helm is defined and install_ray_helm
+
+- name: Configure PodMonitors / ServiceMonitors for Ray
+  ansible.builtin.include_tasks:
+    file: install_monitors.yaml
+  when: install_ray_monitors is defined and install_ray_monitors
+
+- name: Deploy nginx proxy
+  ansible.builtin.include_tasks:
+    file: install_proxy.yaml
+  when: install_ray_proxy is defined and install_ray_proxy

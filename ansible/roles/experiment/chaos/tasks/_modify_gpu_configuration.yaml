@@ -1,0 +1,107 @@
+---
+- name: Define base label selectors
+  set_fact:
+    label_selectors:
+      - "model.name={{ ray_service_name }}"
+      - "ray.io/serve=true"
+
+- name: Construct additional label selectors
+  set_fact:
+    additional_selectors: "{{ chaos_anomaly_injection_label_selectors | default({}) | dict2items | map(attribute='key') | zip(chaos_anomaly_injection_label_selectors | default({}) | dict2items | map(attribute='value')) | map('join', '=') | list }}"
+
+- name: Combine base and additional label selectors
+  set_fact:
+    label_selectors: "{{ label_selectors + additional_selectors }}"
+  when: additional_selectors is defined and additional_selectors | length > 0
+
+- name: Get facts of target LLM pod
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: "{{ ray_service_namespace }}"
+    label_selectors: "{{ label_selectors }}"
+  register: pod_info
+
+- name: Extract node name
+  set_fact:
+    pod_node: "{{ pod_info.resources[0].spec.nodeName }}"
+    pod_name: "{{ pod_info.resources[0].metadata.name }}"
+
+- name: Get GPU PCI bus IDs inside pod
+  kubernetes.core.k8s_exec:
+    namespace: "{{ ray_service_namespace }}"
+    pod: "{{ pod_name }}"
+    command: nvidia-smi --query-gpu=index,pci.bus_id --format=csv,noheader
+  register: pod_gpu_info
+
+- name: Parse assigned GPU index and get corresponding PCI bus ID
+  set_fact:
+    # We can do this because we know there is only one GPU in the pod
+    pod_gpu_index: "0"
+    pod_pci_bus_id: >-
+      {{
+        (pod_gpu_info.stdout_lines |
+        map('split', ',') |
+        selectattr('0', 'equalto', '0') |
+        list)[0][1] | trim
+      }}
+
+- name: Get NVIDIA daemonset pod on the same node
+  shell: |
+    kubectl get pods -n gpu-operator -l app=nvidia-device-plugin-daemonset -o jsonpath='
+      {.items[?(@.spec.nodeName=="{{ pod_node }}")].metadata.name}'
+  register: nvidia_pod
+
+- name: Trim whitespace from pod name
+  set_fact:
+    nvidia_pod_name: "{{ nvidia_pod.stdout | trim }}"
+
+- name: Get GPU default power limit
+  kubernetes.core.k8s_exec:
+    namespace: gpu-operator
+    pod: "{{ nvidia_pod_name }}"
+    command: nvidia-smi -i {{ pod_pci_bus_id }} --query-gpu=power.default_limit --format=csv,noheader,nounits
+  register: default_power_limit
+
+- name: Determine target power limit
+  set_fact:
+    target_power_limit: >-
+      {{
+        (default_power_limit.stdout | trim) if reset_power_limit is defined and reset_power_limit else
+        stress_chaos_gpu_power_limit
+      }}
+
+- name: Capture current GPU power limit
+  kubernetes.core.k8s_exec:
+    namespace: gpu-operator
+    pod: "{{ nvidia_pod_name }}"
+    command: nvidia-smi -i {{ pod_pci_bus_id }} --query-gpu=power.limit --format=csv,noheader,nounits
+  register: current_power_limit
+
+- name: Set GPU power limit on daemonset pod
+  kubernetes.core.k8s_exec:
+    namespace: gpu-operator
+    pod: "{{ nvidia_pod_name }}"
+    command: nvidia-smi -i {{ pod_pci_bus_id }} -pl {{ target_power_limit }}
+
+- name: Verify GPU power limit
+  kubernetes.core.k8s_exec:
+    namespace: gpu-operator
+    pod: "{{ nvidia_pod_name }}"
+    command: nvidia-smi -i {{ pod_pci_bus_id }} --query-gpu=power.limit --format=csv,noheader,nounits
+  register: new_power_limit
+
+- name: Construct verification message
+  set_fact:
+    verification_msg: "Set power limit = {{ target_power_limit }}, Before set power limit = {{ current_power_limit.stdout | trim }}, After set power limit = {{ new_power_limit.stdout | trim }}"
+
+- name: Print verification result
+  debug:
+    msg: "{{ verification_msg }}"
+
+- name: Render information into a result file
+  template:
+    src: "{{ role_path }}/templates/gpu-injection-artifact.json.j2"
+    dest: "{{ chaos_anomaly_injection_result_folder }}/apply_result_chaos_anomaly_injection.json"
+  when:
+    - chaos_anomaly_injection_result_folder is defined
+    - save_result is defined and save_result

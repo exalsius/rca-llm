@@ -1,0 +1,31 @@
+# important experiment configuration parameters
+exp_global_identifier: "{{ exp_global_model_name }}-{{ exp_type_identifier }}"
+
+ray_service_ui_service_name: gradio-{{ exp_global_model_name }}-serve-svc
+ray_service_ui_deployment_name: gradio-{{ exp_global_model_name }}-serve
+
+llm_benchmark_provider: vllm
+
+ray_service_import_path: "{{ llm_benchmark_provider }}_deployment:model"
+ray_service_deployment_name: VLLMDeployment
+ray_service_name: "{{ exp_global_model_name }}"
+
+ray_service_max_ongoing_requests: 500
+ray_service_max_queued_requests: -1 # no limit
+
+ray_service_runtime_env_pip_default:
+    numpy: numpy==1.26.4
+    vllm: vllm==0.8.5
+    ray: ray==2.46.0
+    opentelemetry-api: opentelemetry-api==1.26.0
+    opentelemetry-sdk: opentelemetry-sdk==1.26.0
+    opentelemetry-exporter-otlp: opentelemetry-exporter-otlp==1.26.0
+    opentelemetry-semantic-conventions-ai: opentelemetry-semantic-conventions-ai
+ray_service_runtime_env_vars:
+    BUILD_APP_ARG_CPU_PER_ACTOR: "{{ ray_service_cpu_per_actor }}"
+    BUILD_APP_ARG_GPU_PER_ACTOR: "{{ ray_service_gpu_per_actor }}"
+    DYNAMIC_RAY_CLI_ARG_MODEL: "{{ exp_global_model_id }}"
+    # It is sometimes a good idea to fix / reduce the max model length
+    # DYNAMIC_RAY_CLI_ARG_MAX_MODEL_LEN: "2048"
+    # DYNAMIC_RAY_CLI_ARG_GPU_MEMORY_UTILIZATION: "0.95"
+    DYNAMIC_RAY_CLI_ARG_SERVED_MODEL_NAME: "{{ exp_global_model_name }}"

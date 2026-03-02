@@ -1,0 +1,174 @@
+---
+- name: Get pods by name prefix and labels
+  k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ ray_service_namespace }}"
+    label_selectors:
+      - ray.io/group=headgroup
+      - ray.io/node-type=head
+  register: matched_pods
+  tags:
+    - deploy
+    - configure-grafana
+
+- name: Filter and get only the first matching pod by prefix
+  set_fact:
+    selected_pod: "{{ (matched_pods.resources | selectattr('metadata.name', 'search', '^' + exp_global_model_name) | list | first).metadata.name }}"
+  when: matched_pods.resources | length > 0
+  tags:
+    - deploy
+    - configure-grafana
+
+- name: Get the list of dashboard JSON files from pod
+  kubernetes.core.k8s_exec:
+    namespace: "{{ ray_service_namespace }}"
+    pod: "{{ selected_pod }}"
+    command: ls /tmp/ray/session_latest/metrics/grafana/dashboards
+  register: dashboard_config_list_result
+  tags:
+    - deploy
+    - configure-grafana
+
+- name: Fetch dashboard JSON files from pod
+  kubernetes.core.k8s_cp:
+    namespace: "{{ ray_service_namespace }}"
+    pod: "{{ selected_pod }}"
+    container: "{{ ray_service_head_container_name }}"
+    remote_path: /tmp/ray/session_latest/metrics/grafana/dashboards/{{ item }}
+    local_path: "{{ role_path }}/../../../fetched/{{ exp_global_identifier }}/grafana-configs/{{ item }}"
+    state: from_pod
+  loop: "{{ dashboard_config_list_result.stdout_lines }}"
+  tags:
+    - deploy
+    - configure-grafana
+
+- name: Find all files in the cilium grafana configs directory
+  find:
+    paths: "{{ role_path }}/../../../fetched/cilium-grafana-configs"
+    file_type: file
+  register: cilium_grafana_configs_files_list
+  tags:
+    - deploy
+    - configure-grafana
+
+- name: Retrieve Grafana credentials from Kubernetes secret
+  k8s_info:
+    api_version: v1
+    kind: Secret
+    namespace: observability
+    name: kube-prometheus-stack-grafana
+  register: grafana_secret
+  tags:
+    - deploy
+    - configure-grafana
+
+- name: Decode Grafana admin username and password
+  set_fact:
+    grafana_admin_user: "{{ grafana_secret.resources[0].data['admin-user'] | b64decode }}"
+    grafana_admin_password: "{{ grafana_secret.resources[0].data['admin-password'] | b64decode }}"
+  when:
+    - grafana_secret.resources[0].data['admin-user'] is defined
+    - grafana_secret.resources[0].data['admin-password'] is defined
+  tags:
+    - deploy
+    - configure-grafana
+
+- name: Fail if Grafana credentials are not found in the secret
+  fail:
+    msg: "Grafana admin credentials not found in the specified Kubernetes secret."
+  when: grafana_admin_user is not defined or grafana_admin_password is not defined
+  tags:
+    - deploy
+    - configure-grafana
+
+- name: List existing API Tokens
+  uri:
+    url: http://{{ k8s_control_plane_external_ip }}:{{ grafana_existing_node_port }}/api/auth/keys?includeExpired=true
+    method: GET
+    headers:
+      Content-Type: "application/json"
+      Authorization: "Basic {{ (grafana_admin_user + ':' + grafana_admin_password) | b64encode }}"
+    return_content: yes
+    status_code: 200
+  register: grafana_token_list_result
+  tags:
+    - deploy
+    - configure-grafana
+
+- name: Extract API key ID by name
+  set_fact:
+    old_api_key_id: "{{ grafana_token_list_result.json | selectattr('name', 'equalto', 'dashboard-import') | map(attribute='id') | first }}"
+  when: grafana_token_list_result is defined
+  ignore_errors: true
+  tags:
+    - deploy
+    - configure-grafana
+
+- name: Delete old Grafana API token, if any
+  uri:
+    url: http://{{ k8s_control_plane_external_ip }}:{{ grafana_existing_node_port }}/api/auth/keys/{{ old_api_key_id }}
+    method: DELETE
+    headers:
+      Content-Type: "application/json"
+      Authorization: "Basic {{ (grafana_admin_user + ':' + grafana_admin_password) | b64encode }}"
+    return_content: yes
+    status_code: 200
+  when: old_api_key_id is defined
+  tags:
+    - deploy
+    - configure-grafana
+
+- name: Create Grafana API token
+  uri:
+    url: http://{{ k8s_control_plane_external_ip }}:{{ grafana_existing_node_port }}/api/auth/keys
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      Authorization: "Basic {{ (grafana_admin_user + ':' + grafana_admin_password) | b64encode }}"
+    body_format: json
+    body:
+      name: dashboard-import
+      role: Admin
+      secondsToLive: 300
+    return_content: yes
+    status_code: 200,201
+  register: grafana_token_creation_result
+  tags:
+    - deploy
+    - configure-grafana
+
+- name: Import Grafana dashboards using API (Cilium)
+  uri:
+    url: http://{{ k8s_control_plane_external_ip }}:{{ grafana_existing_node_port }}/api/dashboards/db
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      Authorization: "Bearer {{ grafana_token_creation_result.json.key }}"
+    body_format: json
+    body:
+      dashboard: "{{ lookup('file', '{{ role_path }}/../../../fetched/cilium-grafana-configs/{{ item.path | basename }}') | from_json }}"
+      overwrite: true
+    status_code: 200,201
+  loop: "{{ cilium_grafana_configs_files_list.files }}"
+  ignore_errors: true
+  tags:
+    - deploy
+    - configure-grafana
+  
+- name: Import Grafana dashboards using API (Ray)
+  uri:
+    url: http://{{ k8s_control_plane_external_ip }}:{{ grafana_existing_node_port }}/api/dashboards/db
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      Authorization: "Bearer {{ grafana_token_creation_result.json.key }}"
+    body_format: json
+    body:
+      dashboard: "{{ lookup('file', '{{ role_path }}/../../../fetched/{{ exp_global_identifier }}/grafana-configs/{{ item }}') | from_json }}"
+      overwrite: true
+    status_code: 200,201
+  loop: "{{ dashboard_config_list_result.stdout_lines }}"
+  tags:
+    - deploy
+    - configure-grafana

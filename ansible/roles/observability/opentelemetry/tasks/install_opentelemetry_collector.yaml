@@ -1,0 +1,10 @@
+---
+- name: Create an OpenTelemetry DaemonSet by reading the definition from a local file
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ role_path }}/files/open-telemetry-collector-daemonset.yaml"
+
+- name: Create Python Auto-Instrumentation specification
+  kubernetes.core.k8s:
+    state: present
+    src: "{{ role_path }}/files/open-telemetry-auto-instrumentation.yaml"

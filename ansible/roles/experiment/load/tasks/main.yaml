@@ -1,0 +1,26 @@
+---
+- name: Generate load for target LLM
+  ansible.builtin.include_tasks:
+    file: induce_benchmark.yaml
+  with_nested:
+    # target qps
+    - "{{ llm_benchmark_target_qps_values }}"
+    # iterations of individual experiments
+    - "{{ range(1, llm_benchmark_iterations + 1) }}"
+  when: induce_load_benchmark is defined and induce_load_benchmark
+  tags:
+    - always
+
+- name: Retrieve results of load experiment
+  ansible.builtin.include_tasks:
+    file: retrieve_results.yaml
+  when: retrieve_load_results is defined and retrieve_load_results
+  tags:
+    - always
+
+- name: Retrieve total results across all experiments
+  ansible.builtin.include_tasks:
+    file: retrieve_results_total.yaml
+  when: retrieve_load_results_total is defined and retrieve_load_results_total
+  tags:
+    - always

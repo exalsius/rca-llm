@@ -1,0 +1,34 @@
+---
+- name: Add cilium helm repository
+  kubernetes.core.helm_repository:
+    name: cilium
+    repo_url: https://helm.cilium.io/
+
+- name: Get the external ip of k8s cluster control plane
+  shell: kubectl cluster-info | grep 'Kubernetes control plane' | awk -F'[/:]' '/https?/ {print $4}'
+  register: k8s_control_plane_ip_details
+
+- name: Get the external port of k8s cluster control plane
+  shell: kubectl cluster-info | grep 'Kubernetes control plane' | awk -F'[/:]' '/https?/ {print $5}' | tr -d '\033[0m'
+  register: k8s_control_plane_port_details
+
+- name: Set the external ip and port of k8s cluster control plane
+  set_fact:
+    k8s_control_plane_external_ip: "{{ k8s_control_plane_ip_details.stdout }}"
+    k8s_control_plane_external_port: "{{ k8s_control_plane_port_details.stdout }}"
+
+- name: Install cilium/cilium
+  kubernetes.core.helm:
+    name: cilium
+    chart_ref: cilium/cilium
+    namespace: kube-system
+    chart_version: "{{ cilium_helm_chart_version }}"
+    state: present
+    wait: true
+    timeout: 900s
+    values_files:
+      - "{{ role_path }}/files/cilium-helm-overrides.yaml"
+    values:
+      k8sServiceHost: "{{ k8s_control_plane_external_ip }}"
+      k8sServicePort: "{{ k8s_control_plane_external_port }}"
+    update_repo_cache: true

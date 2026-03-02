@@ -1,0 +1,25 @@
+---
+- name: Create observability namespace
+  kubernetes.core.k8s:
+    name: observability
+    api_version: v1
+    kind: Namespace
+    state: present
+
+- name: Add grafana helm repository
+  kubernetes.core.helm_repository:
+    name: grafana 
+    repo_url: https://grafana.github.io/helm-charts
+
+- name: Install grafana/loki-stack
+  kubernetes.core.helm:
+    name: loki
+    chart_ref: grafana/loki-stack
+    namespace: observability
+    chart_version: "{{ loki_helm_chart_version }}"
+    state: present
+    wait: true
+    timeout: 900s
+    values_files:
+      - "{{ role_path }}/files/loki-overrides.yaml"
+    update_repo_cache: true

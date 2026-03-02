@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: istio-pilot-monitor
+  namespace: observability
+  labels:
+    # `release: $HELM_RELEASE`: Prometheus can only detect ServiceMonitor with this label.
+    release: kube-prometheus-stack
+spec:
+  jobLabel: istiod-service
+  namespaceSelector:
+    matchNames:
+      - istio-system
+  selector:
+    matchLabels:
+      istio: pilot
+  endpoints:
+    - port: http-monitoring

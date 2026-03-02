@@ -1,0 +1,15 @@
+---
+- name: Deploy Istio via helm chart
+  ansible.builtin.include_tasks:
+    file: install_helm.yaml
+  when: install_istio_helm is defined and install_istio_helm
+
+- name: Install Waypoint Proxy
+  ansible.builtin.include_tasks:
+    file: install_waypoint_proxy.yaml
+  when: install_waypoint_proxy is defined and install_waypoint_proxy
+
+- name: Configure PodMonitors / ServiceMonitors for Istio
+  ansible.builtin.include_tasks:
+    file: install_monitors.yaml
+  when: install_istio_monitors is defined and install_istio_monitors

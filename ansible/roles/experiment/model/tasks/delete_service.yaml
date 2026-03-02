@@ -1,0 +1,30 @@
+---
+- name: Get the current state of the ray-service
+  k8s_info:
+    api_version: ray.io/v1
+    kind: RayService
+    name: "{{ exp_global_model_name }}"
+    namespace: ray
+  register: crd_info
+  tags:
+    - delete
+
+- name: Delete deployed kubernetes resources for ray-service
+  kubernetes.core.k8s:
+    state: absent
+    wait: true
+    template: "{{ item }}"
+  loop:
+    - "{{ role_path }}/templates/ray-service-ui.yaml.j2"
+    - "{{ role_path }}/templates/ray-service.yaml.j2"
+  tags:
+    - delete
+
+- name: Collect all telemetry data
+  ansible.builtin.include_role:
+    name: experiment/load
+  vars:
+    retrieve_load_results_total: true
+    ray_service_crd_info: crd_info
+  tags:
+    - delete

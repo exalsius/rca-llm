@@ -1,0 +1,39 @@
+[project]
+name = "ansible-setup"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "ansible==10.3.0",
+    "ansible-core==2.17.7",
+    "cachetools==5.4.0",
+    "certifi==2024.7.4",
+    "cffi==1.17.0",
+    "charset-normalizer==3.3.2",
+    "cryptography==44.0.1",
+    "google-auth==2.33.0",
+    "idna==3.7",
+    "jinja2==3.1.6",
+    "jmespath==1.0.1",
+    "kubernetes==30.1.0",
+    "markupsafe==2.1.5",
+    "matplotlib>=3.10.1",
+    "oauthlib==3.2.2",
+    "packaging==24.1",
+    "pandas>=2.2.3",
+    "passlib>=1.7.4",
+    "pyasn1==0.6.0",
+    "pyasn1-modules==0.4.0",
+    "pycparser==2.22",
+    "python-dateutil==2.9.0.post0",
+    "pyyaml==6.0.2",
+    "requests==2.32.4",
+    "requests-oauthlib==2.0.0",
+    "resolvelib==1.0.1",
+    "rsa==4.9",
+    "seaborn>=0.13.2",
+    "six==1.16.0",
+    "urllib3==2.5.0",
+    "websocket-client==1.8.0",
+]

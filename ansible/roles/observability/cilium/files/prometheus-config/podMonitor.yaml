@@ -1,0 +1,132 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: cilium-agent-monitor
+  namespace: observability
+  labels:
+    # `release: $HELM_RELEASE`: Prometheus can only detect PodMonitor with this label.
+    release: kube-prometheus-stack
+spec:
+  jobLabel: cilium-agents
+  # Only select Kubernetes Pods in the "default" namespace.
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  # Only select Kubernetes Pods with "matchLabels".
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cilium-agent
+  # A list of endpoints allowed as part of this PodMonitor.
+  podMetricsEndpoints:
+  - port: prometheus
+    relabelings:
+      - sourceLabels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: "true"
+      - sourceLabels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: ${1}:${2}
+        targetLabel: __address__
+      # Keep and relabel the pod label "k8s-app" to Prometheus label "k8s_app"
+      - sourceLabels: [__meta_kubernetes_pod_label_k8s_app]
+        action: replace
+        targetLabel: k8s_app
+  - port: hubble-metrics
+    relabelings:
+      - sourceLabels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+        action: keep
+        regex: "true"
+      - sourceLabels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+        action: replace
+        targetLabel: __address__
+        regex: (.+)(?::\d+);(\d+)
+        replacement: $1:$2
+      # Keep and relabel the pod label "k8s-app" to Prometheus label "k8s_app"
+      - sourceLabels: [__meta_kubernetes_pod_label_k8s_app]
+        action: replace
+        targetLabel: k8s_app
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: cilium-envoy-monitor
+  namespace: observability
+  labels:
+    # `release: $HELM_RELEASE`: Prometheus can only detect PodMonitor with this label.
+    release: kube-prometheus-stack
+spec:
+  jobLabel: cilium-envoys
+  # Only select Kubernetes Pods in the "default" namespace.
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  # Only select Kubernetes Pods with "matchLabels".
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cilium-envoy
+  # A list of endpoints allowed as part of this PodMonitor.
+  podMetricsEndpoints:
+  - port: prometheus
+    relabelings:
+      - sourceLabels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: "true"
+      - sourceLabels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: ${1}:${2}
+        targetLabel: __address__
+      # Keep and relabel the pod label "k8s-app" to Prometheus label "k8s_app"
+      - sourceLabels: [__meta_kubernetes_pod_label_k8s_app]
+        action: replace
+        targetLabel: k8s_app
+  - port: envoy-metrics
+    relabelings:
+      - sourceLabels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: "true"
+      - sourceLabels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: ${1}:${2}
+        targetLabel: __address__
+      # Keep and relabel the pod label "k8s-app" to Prometheus label "k8s_app"
+      - sourceLabels: [__meta_kubernetes_pod_label_k8s_app]
+        action: replace
+        targetLabel: k8s_app
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: cilium-operator-monitor
+  namespace: observability
+  labels:
+    # `release: $HELM_RELEASE`: Prometheus can only detect PodMonitor with this label.
+    release: kube-prometheus-stack
+spec:
+  jobLabel: cilium-operators
+  # Only select Kubernetes Pods in the "default" namespace.
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  # Only select Kubernetes Pods with "matchLabels".
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cilium-operator
+  # A list of endpoints allowed as part of this PodMonitor.
+  podMetricsEndpoints:
+  - port: prometheus
+    relabelings:
+      - sourceLabels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: "true"
+      - sourceLabels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: ${1}:${2}
+        targetLabel: __address__
+      # Keep and relabel the pod label "k8s-app" to Prometheus label "k8s_app"
+      - sourceLabels: [__meta_kubernetes_pod_label_k8s_app]
+        action: replace
+        targetLabel: k8s_app

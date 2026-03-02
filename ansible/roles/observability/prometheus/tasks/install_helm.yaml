@@ -1,0 +1,99 @@
+---
+- name: Create observability namespace
+  kubernetes.core.k8s:
+    name: observability
+    api_version: v1
+    kind: Namespace
+    state: present
+
+- name: Add prometheus-community helm repository
+  kubernetes.core.helm_repository:
+    name: prometheus-community
+    repo_url: https://prometheus-community.github.io/helm-charts
+
+- name: Get the current date in ISO format
+  command: date +"%Y%m%d"
+  register: current_date_tstamp
+  changed_when: false
+
+- name: Set grafana admin user
+  ansible.builtin.set_fact:
+    grafana_admin_user_override: admin
+  when: grafana_admin_user_override is undefined
+
+- name: create random grafana admin password
+  ansible.builtin.set_fact:
+    grafana_admin_password_override: "{{ lookup('ansible.builtin.password', '/dev/null', seed=current_date_tstamp.stdout) }}"
+  when: grafana_admin_password_override is undefined
+
+- name: Set grafana dashboard NodePort
+  ansible.builtin.set_fact:
+    grafana_node_port_override: "30300"
+  when: grafana_node_port_override is undefined
+
+- debug:
+    msg: "Grafana Dashboard Credentials = {{ grafana_admin_user_override }} : {{ grafana_admin_password_override }} (NodePort: {{ grafana_node_port_override }})"
+
+- name: Install prometheus-community/kube-prometheus-stack
+  kubernetes.core.helm:
+    name: kube-prometheus-stack
+    chart_ref: prometheus-community/kube-prometheus-stack
+    namespace: observability
+    chart_version: "{{ prometheus_helm_chart_version }}"
+    state: present
+    wait: true
+    timeout: 900s
+    values_files:
+      - "{{ role_path }}/files/prometheus-helm-overrides.yaml"
+    values:
+      # expose additional labels for each monitored Pod
+      kube-state-metrics:
+        metricLabelsAllowlist:
+          - pods=[app]
+      grafana:
+        service:
+          type: NodePort
+          nodePort: "{{ grafana_node_port_override }}"
+        adminUser: "{{ grafana_admin_user_override }}"
+        adminPassword: "{{ grafana_admin_password_override }}"
+        # for deepflow integration (cf. https://deepflow.io/docs/best-practice/production-deployment/#integrate-with-existing-grafana)
+        extraInitContainers:
+        - name: setup-init
+          image: curlimages/curl:7.83.1
+          command:
+            - sh
+            - "-c"
+            - |
+              echo "Running pre-configuration steps"
+              mkdir -p /var/lib/grafana/plugins
+              curl -o /tmp/deepflow-gui-grafana.tar.gz https://deepflow-ce.oss-cn-beijing.aliyuncs.com/pkg/grafana-plugin/stable/deepflow-gui-grafana.tar.gz
+              tar -zxvf /tmp/deepflow-gui-grafana.tar.gz -C /var/lib/grafana/plugins/
+          volumeMounts:
+            - name: storage
+              mountPath: /var/lib/grafana
+              readOnly: false
+        grafana.ini:
+          plugins:
+            allow_loading_unsigned_plugins: deepflow-querier-datasource,deepflow-apptracing-panel,deepflow-topo-panel,deepflowio-tracing-panel,deepflowio-deepflow-datasource,deepflowio-topo-panel
+        # for loki / deepflow integration
+        additionalDataSources:
+          - name: Loki
+            type: loki
+            access: proxy
+            url: http://loki.observability.svc.cluster.local:3100
+            jsonData:
+              tlsSkipVerify: true
+              httpHeaderName1: 'X-Scope-OrgID'
+            secureJsonData:
+              httpHeaderValue1: 'empty'
+          - name: DeepFlow
+            type: deepflow
+            access: proxy
+            url: http://deepflow-server.observability.svc.cluster.local:20416
+            jsonData:
+              tlsSkipVerify: true
+              httpHeaderName1: 'X-Scope-OrgID'
+              tracingUrl: http://deepflow-app.observability.svc.cluster.local:20418
+            secureJsonData:
+              httpHeaderValue1: 'empty'
+    update_repo_cache: true

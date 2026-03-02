@@ -1,0 +1,50 @@
+# the following is necessary for istio integration (enables collecting service mesh metrics)
+socketLB:
+  hostNamespaceOnly: true
+cni:
+  exclusive: false
+
+debug:
+  enabled: false
+  verbose: ""
+# to match k3s default podCIDR 10.42.0.0/16 (https://docs.cilium.io/en/stable/installation/k3s/)
+ipam:
+  operator:
+    clusterPoolIPv4PodCIDRList: ["10.42.0.0/16"]
+kubeProxyReplacement: true
+l2announcements:
+  enabled: true
+k8sClientRateLimit:
+  qps: 50
+  burst: 200
+operator:
+  # replicas: 1 # Uncomment this if you only have one node
+  rollOutPods: true
+  prometheus:
+    enabled: true
+rollOutCiliumPods: true
+# below: monitoring
+prometheus:
+  enabled: true
+  # Enable some metrics which are disabled by default (cf. https://docs.cilium.io/en/stable/observability/metrics/)
+  metrics:
+    - +cilium_endpoint_max_ifindex
+    - +cilium_bpf_syscall_duration_seconds
+    - +cilium_proxy_datapath_update_timeout_total
+    - +cilium_k8s_event_lag_seconds
+    - +cilium_fqdn_active_names
+    - +cilium_fqdn_active_ips
+    - +cilium_fqdn_alive_zombie_connections
+    - +cilium_api_limiter_wait_history_duration_seconds
+hubble:
+  enabled: true
+  metrics:
+    # For a list and description of all metrics: https://docs.cilium.io/en/latest/observability/metrics/#hubble-exported-metrics
+    enabled:
+      - dns
+      - drop
+      - tcp
+      - flow
+      - port-distribution
+      - icmp
+      - "httpV2:exemplars=true;labelsContext=source_ip,source_namespace,source_workload,destination_ip,destination_namespace,destination_workload,traffic_direction"

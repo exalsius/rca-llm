@@ -1,0 +1,10 @@
+llm_benchmark_iterations: 1
+llm_benchmark_target_qps_values: [1]
+llm_benchmark_duration: 300
+llm_benchmark_concurrent_workers: 300
+llm_benchmark_concurrent_workers_spawn_rate: 1
+llm_benchmark_request_length: 512
+llm_benchmark_response_length: 256
+llm_benchmark_target_qps_distribution: constant
+
+export_traces_python_script_export_target: all

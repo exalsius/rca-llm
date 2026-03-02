@@ -1,0 +1,22 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: {{ ray_service_name }}-network-chaos-delay
+  namespace: chaosmesh
+spec:
+  mode: {{ network_chaos_delay_mode }}
+  selector:
+    namespaces:
+      - {{ network_chaos_delay_namespace | default(ray_service_namespace) | default('ray') }}
+    labelSelectors:
+      'model.name': {{ ray_service_name }}
+      'ray.io/serve': 'true'
+{% for key, value in (chaos_anomaly_injection_label_selectors | default({})).items() %}
+      '{{ key }}': '{{ value }}'
+{% endfor %}
+  action: delay
+  direction: to
+  delay:
+    latency: {{ network_chaos_delay_latency }}
+    correlation: '{{ network_chaos_delay_correlation }}'
+    jitter: {{ network_chaos_delay_jitter }}

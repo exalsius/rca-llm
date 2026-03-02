@@ -1,0 +1,105 @@
+---
+- name: Prepare experiment based on configuration settings
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/configs/config_base.yaml"
+    - "{{ playbook_dir }}/configs/config_{{ model_id }}.yaml"
+    - "{{ playbook_dir }}/configs/config_vllm.yaml"
+  tasks:
+
+  - name: Ensure the directory exists
+    file:
+      path: "{{ playbook_dir }}/fetched/{{ exp_global_identifier }}/{{ item }}"
+      state: directory
+      mode: '0755'
+    loop:
+      - grafana-configs
+      - diverse
+      - results
+    tags:
+      - always
+
+# We first need to gather some information
+  - name: Get the external ip of k8s cluster control plane
+    shell: kubectl cluster-info | grep 'Kubernetes control plane' | awk -F'[/:]' '/https?/ {print $4}'
+    register: k8s_control_plane_details
+    tags:
+      - always
+
+  - name: Set the external ip of k8s cluster control plane
+    set_fact:
+      k8s_control_plane_external_ip: "{{ k8s_control_plane_details.stdout }}"
+    tags:
+      - always
+
+  - name: Get details of the grafana service
+    shell: kubectl get svc kube-prometheus-stack-grafana -n observability -o json
+    register: grafana_service_details
+    tags:
+      - always
+
+  - name: Parse NodePort from grafana service details
+    set_fact:
+      grafana_existing_node_port: "{{ grafana_service_details.stdout | from_json | json_query('spec.ports[?name==`http-web`].nodePort') | first }}"
+    tags:
+      - always
+
+# We must communicate via node-port in order for DeepFlow to create traces
+  - name: Get details of the nginx-proxy service
+    shell: kubectl get svc nginx-proxy-service -n ray -o json
+    register: nginx_proxy_service_details
+    tags:
+      - always
+
+  - name: Retrieve nginx service node-port
+    set_fact:
+      nginx_proxy_service_node_port: "{{ nginx_proxy_service_details.stdout | from_json | json_query('spec.ports[?name==`http-web`].nodePort') | first }}"
+    tags:
+      - always
+
+  - name: Set experiment target host
+    set_fact:
+      exp_global_host: http://{{ k8s_control_plane_external_ip }}:{{ nginx_proxy_service_node_port }}/{{ exp_global_model_name }}
+    tags:
+      - always
+
+# deploy the actual LLM (ray service)
+  - name: Deploy ray service and configure grafana
+    ansible.builtin.include_role:
+      name: experiment/model
+    vars:
+      deploy_model_service: true
+      configure_model_grafana_dashboards: true
+    tags:
+      - deploy
+      - configure-grafana
+
+# apply benchmarking to deployed LLM
+  - name: Configure chaos experiment, if necessary
+    ansible.builtin.include_role:
+        name: experiment/chaos
+    vars:
+      chaosmesh_helm_chart_version: 2.7.0
+      install_chaos_helm: true
+    tags:
+      - benchmark
+
+  - name: Benchmark LLM multiple times and collect results
+    ansible.builtin.include_role:
+      name: experiment/load
+    vars:
+      induce_load_benchmark: true
+      retrieve_load_results: true
+    tags:
+      - benchmark
+      - collect-telemetry-data
+
+# clean up, delete all deployed elements and gather global telemetry data
+  - name: Delete ray service
+    ansible.builtin.include_role:
+      name: experiment/model
+    vars:
+      delete_model_service: true
+    tags:
+      - delete

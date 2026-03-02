@@ -1,0 +1,4 @@
+# requirements.yaml for ansible-galaxy
+- name: exalsius.k3s
+  src: https://github.com/exalsius/ansible-role-k3s.git
+  version: v1.0.0  # or "main", or a commit SHA

@@ -1,0 +1,67 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rca-collector-configmap
+  namespace: {{ rca_collector_namespace }}
+data:
+  rca-collector.py: |
+    {{ export_rca_data_python_script_content | indent(4) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rca-collector-pvc
+  namespace: {{ rca_collector_namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rca-collector-pod
+  namespace: {{ rca_collector_namespace }}
+spec:
+  restartPolicy: OnFailure
+  containers:
+    - name: rca-collector-container
+      image: {{ rca_collector_image }}
+      imagePullPolicy: Always
+      volumeMounts:
+        - name: rca-collector-storage
+          mountPath: /app/results
+        - name: rca-collector-config
+          mountPath: /app/config
+      args:
+        - uv 
+        - run
+        - --with
+        - 'pandas==2.2.3'
+        - --with
+        - 'numpy==2.2.5'
+        - --with
+        - python-dateutil
+        - --with
+        - requests
+        - --with
+        - 'networkx==3.5'
+        - /app/config/rca-collector.py
+      env:
+        - name: RCA_COLLECTOR_PROM_URL
+          value: http://kube-prometheus-stack-prometheus.observability.svc:9090
+        - name: RCA_COLLECTOR_RESULT_FOLDER
+          value: /app/results
+        - name: RCA_COLLECTOR_START_TIME_STR
+          value: {{ fetch_start_time }}
+        - name: RCA_COLLECTOR_END_TIME_STR
+          value: {{ fetch_end_time }}
+  volumes:
+    - name: rca-collector-storage
+      persistentVolumeClaim:
+        claimName: rca-collector-pvc
+    - name: rca-collector-config
+      configMap:
+        name: rca-collector-configmap

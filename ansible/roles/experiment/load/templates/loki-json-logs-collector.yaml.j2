@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: loki-json-logs-collector
+  namespace: {{ loki_json_namespace }}
+spec:
+  containers:
+    - name: collector
+      image: busybox:1.28
+      command: ["/bin/sh", "-c", "ping localhost"]
+      volumeMounts:
+        - name: loki-json-storage
+          mountPath: /app/json
+  volumes:
+    - name: loki-json-storage
+      persistentVolumeClaim:
+        claimName: loki-json-pvc

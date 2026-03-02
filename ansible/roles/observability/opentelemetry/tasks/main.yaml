@@ -1,0 +1,10 @@
+---
+- name: Deploy OpenTelemetry via helm chart
+  ansible.builtin.include_tasks:
+    file: install_helm.yaml
+  when: install_opentelemetry_helm is defined and install_opentelemetry_helm
+
+- name: Deploy OpenTelemetry Collector Daemonset
+  ansible.builtin.include_tasks:
+    file: install_opentelemetry_collector.yaml
+  when: install_opentelemetry_helm is defined and install_opentelemetry_helm

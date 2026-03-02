@@ -1,0 +1,22 @@
+---
+- name: Deploy Ray Service
+  ansible.builtin.include_tasks:
+    file: deploy_service.yaml
+  when: deploy_model_service is defined and deploy_model_service
+  tags:
+    - always
+
+- name: Configure Grafana Dashboards
+  ansible.builtin.include_tasks:
+    file: configure_grafana_dashboards.yaml
+  when: configure_model_grafana_dashboards is defined and configure_model_grafana_dashboards
+  tags:
+    - always
+
+- name: Deploy Ray Service
+  ansible.builtin.include_tasks:
+    file: delete_service.yaml
+  when: delete_model_service is defined and delete_model_service
+  tags:
+    - always
+

@@ -1,0 +1,76 @@
+# ---------------------------------------------------------------------------
+# ❶  Install Gateway API CRDs (required for ambient-mesh waypoints)
+#     We pull the published manifest from the upstream release tag that
+#     matches Istio 1.26+ (v1.0.0).  Adjust the version if you upgrade
+#     Istio in the future.
+# ---------------------------------------------------------------------------
+
+- name: Download Gateway API CRDs
+  ansible.builtin.get_url:
+    url: "https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.3.0/standard-install.yaml"
+    dest: "/tmp/gateway-api-crds.yaml"
+    mode: '0644'
+
+- name: Apply Gateway API CRDs cluster-wide
+  kubernetes.core.k8s:
+    src: "/tmp/gateway-api-crds.yaml"
+    state: present
+    apply: true
+
+# -------------------------------------------------------------------------
+# Waypoint Gateway
+# -------------------------------------------------------------------------
+         
+- name: Create Gateway object recognised by Istio Ambient
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: gateway.networking.k8s.io/v1beta1
+      kind: Gateway
+      metadata:
+        name: ray-waypoint
+        namespace: ray
+        labels:
+          istio.io/waypoint-for: all
+        annotations:
+          networking.istio.io/service-type: "ClusterIP"
+      spec:
+        gatewayClassName: istio-waypoint
+        listeners:
+          - name: default
+            port: 15008
+            protocol: HBONE
+            allowedRoutes:
+              namespaces:
+                from: Same
+
+- name: Define extended telemetry for waypoint proxy
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: telemetry.istio.io/v1alpha1
+      kind: Telemetry
+      metadata:
+        name: ray-waypoint-telemetry
+        namespace: ray
+      spec:
+        targetRefs:
+          - group: gateway.networking.k8s.io
+            kind: Gateway
+            name: ray-waypoint
+        metrics:
+          - providers:
+              - name: prometheus
+            overrides:
+              - match: 
+                  metric: ALL_METRICS
+                tagOverrides:
+                  custom_tag_outbound_pod_name:
+                    value: filter_state.upstream_peer.name
+                  custom_tag_inbound_pod_name:
+                    value: filter_state.downstream_peer.name
+                  custom_tag_connection_source_address:
+                    value: source.address
+                  custom_tag_connection_destination_address:
+                    value: destination.address
+

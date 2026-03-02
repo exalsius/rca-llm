@@ -1,0 +1,3 @@
+ray_service_head_container_name: ray-head
+ray_service_head_group_label: rayserve
+ray_service_replica_group_label: rayserve

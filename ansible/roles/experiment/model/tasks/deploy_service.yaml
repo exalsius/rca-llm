@@ -1,0 +1,61 @@
+---
+# This is necessary for running py-spy within the head / replica pods (cf. https://docs.ray.io/en/latest/cluster/kubernetes/k8s-ecosystem/pyspy.html#kuberay-pyspy-integration)
+- name: Change Pod Security Standard level to "privileged" for namespace "ray"
+  kubernetes.core.k8s:
+    state: present
+    kind: Namespace
+    name: "{{ ray_service_namespace }}"
+    api_version: v1
+    definition:
+      metadata:
+        name: "{{ ray_service_namespace }}"
+        labels:
+          pod-security.kubernetes.io/enforce: "privileged"
+          pod-security.kubernetes.io/enforce-version: "latest"
+  tags:
+    - deploy
+
+- name: Communicate empty node-selector for head-group
+  debug:
+    msg: Variable 'ray_service_head_group_node_selector' is undefined, will leave placement to Kubernetes.
+  when: ray_service_head_group_node_selector is undefined
+  tags:
+    - deploy
+
+- name: Communicate empty node-selector for replica-group
+  debug:
+    msg: Variable 'ray_service_replica_group_node_selector' is undefined, will leave placement to Kubernetes.
+  when: ray_service_replica_group_node_selector is undefined
+  tags:
+    - deploy
+
+- name: Read Python script for vllm deployment
+  set_fact:
+    vllm_deployment_python_script_content: "{{ lookup('file', '{{ role_path }}/files/vllm_deployment.py') }}"
+  tags:
+    - deploy
+
+- name: Apply experiment manifest for ray-service
+  kubernetes.core.k8s:
+    state: present
+    wait: true
+    template: "{{ item }}"
+  loop:
+    - "{{ role_path }}/templates/ray-service.yaml.j2"
+  tags:
+    - deploy
+
+# wait for LLM (ray service) to be ready, this might take quite some time
+
+- name: Get the current state of the ray-service
+  k8s_info:
+    api_version: ray.io/v1
+    kind: RayService
+    name: "{{ ray_service_name }}"
+    namespace: "{{ ray_service_namespace }}"
+  register: cr_info
+  until: cr_info|json_query('resources[*].status.serviceStatus')|unique == ["Running"]
+  delay: 10
+  retries: 300
+  tags:
+    - deploy

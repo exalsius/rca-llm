@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: llm-benchmark-pvc
+  namespace: {{ llm_benchmark_namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: llm-benchmark-pod-{{ llm_benchmark_execution_identifier }}
+  namespace: {{ llm_benchmark_namespace }}
+spec:
+  restartPolicy: Never
+  containers:
+    - name: llm-benchmark-container
+      # this container image is built from the Dockerfile in the llm-benchmark directory of the repository
+      image: {{ llm_benchmark_image }}
+      imagePullPolicy: Always
+      volumeMounts:
+        - name: llm-benchmark-storage
+          mountPath: /mnt/data
+      args:
+        - "-t"
+        - "{{ llm_benchmark_duration }}s"
+        - "-u"
+        - "{{ llm_benchmark_concurrent_workers }}"
+        - "-r"
+        - "{{ llm_benchmark_concurrent_workers_spawn_rate }}"
+        - "-p"
+        - "{{ llm_benchmark_request_length }}"
+        - "-o"
+        - "{{ llm_benchmark_response_length }}"
+        - "--provider"
+        - "{{ llm_benchmark_provider }}"
+        - "--model"
+        - "{{ exp_global_model_name | default(exp_global_model_id) }}"
+        - "-H"
+        - "{{ exp_global_host }}"
+        - "--stream"
+        - "--chat"
+        - "--summary-file"
+        - "/mnt/data/results.csv"
+        - "--qps"
+        - "{{ llm_benchmark_target_qps | default("5") }}"
+        - "--qps-distribution"
+        - "{{ llm_benchmark_target_qps_distribution | default("constant") }}"
+        - "--prompt-randomize"
+        - "--logprobs"
+        - "{{ llm_benchmark_logprobs | default("true") }}"
+  volumes:
+    - name: llm-benchmark-storage
+      persistentVolumeClaim:
+        claimName: llm-benchmark-pvc

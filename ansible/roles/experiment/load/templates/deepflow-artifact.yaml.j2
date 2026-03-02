@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deepflow-artifact-configmap
+  namespace: {{ deepflow_artifact_namespace }}
+data:
+  export_traces.py: |
+    {{ export_traces_python_script_content | indent(4) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: deepflow-artifact-pvc
+  namespace: {{ deepflow_artifact_namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: deepflow-artifact-pod
+  namespace: {{ deepflow_artifact_namespace }}
+spec:
+  restartPolicy: Never
+  containers:
+    - name: deepflow-artifact-container
+      image: {{ deepflow_artifact_image }}
+      imagePullPolicy: Always
+      volumeMounts:
+        - name: deepflow-artifact-storage
+          mountPath: /app/artifact
+        - name: deepflow-artifact-config
+          mountPath: /app/config
+      args:
+        - uv
+        - run
+        - --with
+        - requests
+        - --with
+        - python-dateutil
+        - /app/config/export_traces.py
+      env:
+        - name: EXPORT_TRACES_PYTHON_SCRIPT_SERVER_BASE_URL
+          value: http://deepflow-server.observability.svc:20416
+        - name: EXPORT_TRACES_PYTHON_SCRIPT_APP_BASE_URL
+          value: http://deepflow-app.observability.svc:20418
+        - name: EXPORT_TRACES_PYTHON_SCRIPT_START_TIME_STR
+          value: {{ fetch_start_time }}
+        - name: EXPORT_TRACES_PYTHON_SCRIPT_END_TIME_STR
+          value: {{ fetch_end_time }}
+        - name: EXPORT_TRACES_PYTHON_SCRIPT_RESULT_FILE_NAME
+          value: {{ fetch_result_file_name }}
+        - name: EXPORT_TRACES_PYTHON_SCRIPT_EXPORT_TARGET
+          value: {{ export_traces_python_script_export_target }}
+  volumes:
+    - name: deepflow-artifact-storage
+      persistentVolumeClaim:
+        claimName: deepflow-artifact-pvc
+    - name: deepflow-artifact-config
+      configMap:
+        name: deepflow-artifact-configmap

@@ -1,0 +1,36 @@
+---
+- name: "Evaluate scenario: DP=1, TP=1, PP=1 (pack)"
+  ansible.builtin.import_playbook: execute-experiment.yaml
+  vars:
+    exp_id: "config_vllm"
+    model_id: "falcon-2-11b"
+    exp_type_identifier: dp=1_tp=1_pp=1_pack
+    exp_global_data_parallelism: 1
+    exp_global_placement_group_strategy: "PACK"
+
+- name: "Evaluate scenario: DP=2, TP=1, PP=1 (pack)"
+  import_playbook: execute-experiment.yaml
+  vars:
+    exp_id: "config_vllm"
+    model_id: "falcon-2-11b"
+    exp_type_identifier: dp=2_tp=1_pp=1_pack
+    exp_global_data_parallelism: 2
+    exp_global_placement_group_strategy: "PACK"
+
+- name: "Evaluate scenario: DP=3, TP=1, PP=1 (pack)"
+  import_playbook: execute-experiment.yaml
+  vars:
+    exp_id: "config_vllm"
+    model_id: "falcon-2-11b"
+    exp_type_identifier: dp=3_tp=1_pp=1_pack
+    exp_global_data_parallelism: 3
+    exp_global_placement_group_strategy: "PACK"
+
+- name: "Evaluate scenario: DP=4, TP=1, PP=1 (pack)"
+  import_playbook: execute-experiment.yaml
+  vars:
+    exp_id: "config_vllm"
+    model_id: "falcon-2-11b"
+    exp_type_identifier: dp=4_tp=1_pp=1_pack
+    exp_global_data_parallelism: 4
+    exp_global_placement_group_strategy: "PACK"

@@ -1,0 +1,2 @@
+exp_global_model_name: phi-4
+exp_global_model_id: microsoft/{{ exp_global_model_name }}

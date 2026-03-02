@@ -1,0 +1,64 @@
+# Fetch deepflow traces
+- name: Read Python script for exporting deepflow traces
+  set_fact:
+    export_traces_python_script_content: "{{ lookup('file', '{{ role_path }}/files/export_traces.py') }}"
+
+- name: Apply experiment manifest for deepflow-artifact
+  kubernetes.core.k8s:
+    state: present
+    template: "{{ role_path }}/templates/deepflow-artifact.yaml.j2"
+
+- name: Get the current state of the deepflow-artifact
+  k8s_info:
+    api_version: v1
+    kind: Pod
+    name: deepflow-artifact-pod
+    namespace: "{{ deepflow_artifact_namespace }}"
+  register: pod_info
+  until: pod_info|json_query('resources[*].status.phase')|unique == ["Succeeded"]
+  delay: 10
+  retries: 300
+
+- name: Delete deepflow-artifact-pod
+  kubernetes.core.k8s:
+    state: absent
+    wait: true
+    kind: Pod
+    namespace: "{{ deepflow_artifact_namespace }}"
+    name: deepflow-artifact-pod
+
+# Collect artifacts from deepflow
+
+- name: Deploy artifact collector pod
+  kubernetes.core.k8s:
+    state: present
+    wait: true
+    template: "{{ role_path }}/templates/deepflow-artifact-collector.yaml.j2"
+
+- name: Retrieve results from artifact collector pod
+  kubernetes.core.k8s_cp:
+    namespace: "{{ deepflow_artifact_namespace }}"
+    pod: deepflow-artifact-collector
+    container: collector
+    remote_path: "/app/artifact/{{ fetch_result_file_name }}-{{ to_collect }}"
+    local_path: "{{ fetch_result_folder }}/{{ fetch_result_file_name }}-{{ to_collect }}"
+    state: from_pod
+  loop:
+    - request-list.csv
+    - trace-list.json
+  loop_control:
+    loop_var: to_collect
+  ignore_errors: true
+
+# Cleanup
+
+- name: Delete deployed Kubernetes resources for deepflow-artifact collector
+  kubernetes.core.k8s:
+    state: absent
+    wait: true
+    template: "{{ to_delete }}"
+  loop:
+    - "{{ role_path }}/templates/deepflow-artifact-collector.yaml.j2"
+    - "{{ role_path }}/templates/deepflow-artifact.yaml.j2"
+  loop_control:
+    loop_var: to_delete

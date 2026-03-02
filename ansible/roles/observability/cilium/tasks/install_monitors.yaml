@@ -1,0 +1,16 @@
+---
+- name: Apply podMonitor.yaml
+  kubernetes.core.k8s:
+    state: present
+    apply: true
+    src: "{{ role_path }}/files/prometheus-config/podMonitor.yaml"
+  # Might fail if Prometheus Stack has not yet been deployed
+  ignore_errors: true
+
+- name: Apply serviceMonitor.yaml
+  kubernetes.core.k8s:
+    state: present
+    apply: true
+    src: "{{ role_path }}/files/prometheus-config/serviceMonitor.yaml"
+  # Might fail if Prometheus Stack has not yet been deployed
+  ignore_errors: true

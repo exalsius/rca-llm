@@ -1,0 +1,24 @@
+# general configuration
+chaos_anomaly_injection_before_wait: 0
+chaos_anomaly_injection_after_wait: 0
+chaos_anomaly_injection_duration: 300
+# stress-chaos-cpu configuration
+stress_chaos_cpu_mode: one
+stress_chaos_cpu_namespace: ray
+stress_chaos_cpu_stressors_workers: 16
+stress_chaos_cpu_stressors_load: 100
+# stress-chaos-memory configuration
+stress_chaos_memory_mode: one
+stress_chaos_memory_namespace: ray
+stress_chaos_memory_stressors_workers: 1
+stress_chaos_memory_stressors_size: 8GB
+# network-chaos-delay configuration
+network_chaos_delay_mode: one
+network_chaos_delay_namespace: ray
+network_chaos_delay_latency: 1000ms
+network_chaos_delay_correlation: '0.25'
+network_chaos_delay_jitter: 100ms
+# gpu-stress-chaos configuration
+stress_chaos_gpu_mode: one
+stress_chaos_gpu_namespace: ray
+stress_chaos_gpu_power_limit: 150

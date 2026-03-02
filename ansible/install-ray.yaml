@@ -1,0 +1,17 @@
+---
+# This playbook is used to install the KubeRay operator on a Kubernetes cluster
+# see https://github.com/ray-project/kuberay/tree/master
+
+- name: Install KubeRay operator and associated utilities
+  hosts: localhost
+  gather_facts: false
+  
+  vars:
+    ray_helm_chart_version: 1.2.2
+    install_ray_helm: true
+    install_ray_monitors: true
+    install_ray_proxy: true
+    fluent_bit_container_image: fluent/fluent-bit:3.1.0
+
+  roles:
+    - ray

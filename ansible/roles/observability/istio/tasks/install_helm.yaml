@@ -1,0 +1,62 @@
+---
+- name: Create istio-system namespace
+  kubernetes.core.k8s:
+    name: istio-system
+    api_version: v1
+    kind: Namespace
+    state: present
+
+- name: Add istio helm repository
+  kubernetes.core.helm_repository:
+    name: istio
+    repo_url: https://istio-release.storage.googleapis.com/charts
+
+- name: Install istio/base
+  kubernetes.core.helm:
+    name: istio-base
+    chart_ref: istio/base
+    namespace: istio-system
+    chart_version: "{{ istio_helm_chart_version }}"
+    state: present
+    wait: true
+    timeout: 900s
+    update_repo_cache: true
+
+- name: Install istio/istiod
+  kubernetes.core.helm:
+    name: istiod
+    chart_ref: istio/istiod
+    namespace: istio-system
+    chart_version: "{{ istio_helm_chart_version }}"
+    state: present
+    wait: true
+    timeout: 900s
+    values_files:
+      - "{{ role_path }}/files/istio-helm-overrides.yaml"
+    update_repo_cache: true
+
+- name: Install istio/cni (ambient mode)
+  kubernetes.core.helm:
+    name: istio-cni
+    chart_ref: istio/cni
+    namespace: kube-system
+    chart_version: "{{ istio_helm_chart_version }}"
+    state: present
+    wait: true
+    timeout: 900s
+    values_files:
+      - "{{ role_path }}/files/istio-helm-overrides.yaml"
+    update_repo_cache: true
+
+- name: Install istio/ztunnel
+  kubernetes.core.helm:
+    name: istio-ztunnel
+    chart_ref: istio/ztunnel
+    namespace: istio-system
+    chart_version: "{{ istio_helm_chart_version }}"
+    state: present
+    wait: true
+    timeout: 900s
+    values_files:
+      - "{{ role_path }}/files/istio-helm-overrides.yaml"
+    update_repo_cache: true

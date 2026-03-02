@@ -1,0 +1,58 @@
+# Fetch loki logs
+- name: Read Python script for exporting loki logs
+  set_fact:
+    export_logs_python_script_content: "{{ lookup('file', '{{ role_path }}/files/export_logs.py') }}"
+
+- name: Apply experiment manifest for loki-json
+  kubernetes.core.k8s:
+    state: present
+    template: "{{ role_path }}/templates/loki-json.yaml.j2"
+
+- name: Get the current state of the loki-json
+  k8s_info:
+    api_version: v1
+    kind: Pod
+    name: loki-json-pod
+    namespace: "{{ loki_json_namespace }}"
+  register: pod_info
+  until: pod_info|json_query('resources[*].status.phase')|unique == ["Succeeded"]
+  delay: 10
+  retries: 300
+
+- name: Delete loki-json-pod
+  kubernetes.core.k8s:
+    state: absent
+    wait: true
+    kind: Pod
+    namespace: "{{ loki_json_namespace }}"
+    name: loki-json-pod
+
+# Collect logs from loki
+
+- name: Deploy logs collector pod
+  kubernetes.core.k8s:
+    state: present
+    wait: true
+    template: "{{ role_path }}/templates/loki-json-logs-collector.yaml.j2"
+
+- name: Retrieve results from logs collector pod
+  kubernetes.core.k8s_cp:
+    namespace: "{{ loki_json_namespace }}"
+    pod: loki-json-logs-collector
+    container: collector
+    remote_path: "/app/json/{{ fetch_result_file_name }}"
+    local_path: "{{ fetch_result_folder }}/{{ fetch_result_file_name }}"
+    state: from_pod
+
+# Cleanup
+
+- name: Delete deployed Kubernetes resources for loki-logs collector
+  kubernetes.core.k8s:
+    state: absent
+    wait: true
+    template: "{{ to_delete }}"
+  loop:
+    - "{{ role_path }}/templates/loki-json-logs-collector.yaml.j2"
+    - "{{ role_path }}/templates/loki-json.yaml.j2"
+  loop_control:
+    loop_var: to_delete

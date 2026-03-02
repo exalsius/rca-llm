@@ -1,0 +1,41 @@
+---
+- name: Define label selectors
+  set_fact:
+    label_selectors:
+      - "model.name={{ ray_service_name }}"
+      - "ray.io/serve=true"
+
+- name: Get pods by label selector
+  k8s_info:
+    kind: Pod
+    namespace: "{{ ray_service_namespace }}"
+    label_selectors: "{{ label_selectors }}"
+  register: pod_info
+
+- name: Fail if no pods found
+  ansible.builtin.fail:
+    msg: "No pods found with label selector '{{ label_selectors }}' in namespace '{{ ray_service_namespace }}'"
+  when: not pod_info.resources
+
+- name: Get GPU PCI bus IDs from each pod
+  kubernetes.core.k8s_exec:
+    namespace: "{{ ray_service_namespace }}"
+    pod: "{{ loop_item.metadata.name }}"
+    command: nvidia-smi --query-gpu=pci.bus_id --format=csv,noheader
+  loop: "{{ pod_info.resources }}"
+  loop_control:
+    loop_var: loop_item
+  register: pci_bus_id_results
+  no_log: true
+
+- name: Extract and flatten PCI bus IDs
+  ansible.builtin.set_fact:
+    pci_bus_ids_list: "{{ pci_bus_id_results.results | map(attribute='stdout_lines') | flatten | unique | sort }}"
+
+- name: Concatenate PCI bus IDs
+  ansible.builtin.set_fact:
+    dcgm_pci_bus_ids_concat: "{{ pci_bus_ids_list | join('|') }}"
+
+- name: Display the resulting PCI bus IDs
+  ansible.builtin.debug:
+    var: dcgm_pci_bus_ids_concat

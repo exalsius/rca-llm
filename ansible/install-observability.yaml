@@ -1,0 +1,67 @@
+---
+- name: Install Cilium
+  hosts: localhost
+  vars:
+    cilium_helm_chart_version: 1.16.1
+    install_cilium_helm: true
+  roles:
+    - observability/cilium
+
+- name: Install Istio
+  hosts: localhost
+  vars:
+    istio_helm_chart_version: 1.26.1
+    install_istio_helm: true
+  roles:
+    - observability/istio
+
+- name: Install Loki
+  hosts: localhost
+  vars:
+    loki_helm_chart_version: 2.10.2
+    install_loki_helm: true
+  roles:
+    - observability/loki
+
+- name: Install DeepFlow
+  hosts: localhost
+  vars:
+    # 21.11.2024: Chart version 6.5.012 actually deploys app version 6.5.9 which is currently LTS (cf. https://deepflow.io/docs/release-notes/release-timeline/)
+    deepflow_helm_chart_version: 6.5.012
+    install_deepflow_helm: true
+  roles:
+    - observability/deepflow
+
+- name: Install OpenTelemetry
+  hosts: localhost
+  vars:
+    opentelemetry_helm_chart_version: 0.78.2
+    install_opentelemetry_helm: true
+  roles:
+    - observability/opentelemetry
+
+- name: Install Prometheus-Stack
+  hosts: localhost
+  vars:
+    prometheus_helm_chart_version: 48.2.1
+    install_prometheus_helm: true
+  roles:
+    - observability/prometheus
+
+- name: Configure Cilium Monitoring
+  hosts: localhost
+  vars:
+    cilium_helm_chart_version: 1.16.1
+    install_cilium_monitors: true
+    install_cilium_grafana_dashboards: true
+  roles:
+    - observability/cilium
+
+- name: Configure Istio Monitoring
+  hosts: localhost
+  vars:
+    istio_helm_chart_version: 1.26.1
+    install_istio_monitors: true
+    install_waypoint_proxy: true
+  roles:
+    - observability/istio

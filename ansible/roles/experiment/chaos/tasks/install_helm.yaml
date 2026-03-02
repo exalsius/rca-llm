@@ -1,0 +1,31 @@
+---
+- name: Create chaosmesh namespace
+  kubernetes.core.k8s:
+    name: chaosmesh
+    api_version: v1
+    kind: Namespace
+    state: present
+  tags:
+    - benchmark
+
+- name: Add chaos-mesh project helm repository
+  kubernetes.core.helm_repository:
+    name: chaos-mesh
+    repo_url: https://charts.chaos-mesh.org
+  tags:
+    - benchmark
+
+- name: Deploy the chaos-mesh operator
+  kubernetes.core.helm:
+    name: chaos-mesh
+    chart_ref: chaos-mesh/chaos-mesh
+    release_namespace: chaosmesh
+    chart_version: "{{ chaosmesh_helm_chart_version }}"
+    state: present
+    wait: true
+    timeout: 900s
+    update_repo_cache: true
+    values_files:
+      - "{{ role_path }}/files/chaosmesh-helm-overrides.yaml"
+  tags:
+    - benchmark

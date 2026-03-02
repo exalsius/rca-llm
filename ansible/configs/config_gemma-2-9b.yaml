@@ -1,0 +1,2 @@
+exp_global_model_name: gemma-2-9b
+exp_global_model_id: google/{{ exp_global_model_name }}-it

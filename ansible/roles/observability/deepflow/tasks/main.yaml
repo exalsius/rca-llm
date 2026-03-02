@@ -1,0 +1,5 @@
+---
+- name: Deploy DeepFlow via helm chart
+  ansible.builtin.include_tasks:
+    file: install_helm.yaml
+  when: install_deepflow_helm is defined and install_deepflow_helm

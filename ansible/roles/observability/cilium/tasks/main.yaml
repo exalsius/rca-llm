@@ -1,0 +1,16 @@
+---
+- name: Deploy Cilium via helm chart
+  ansible.builtin.include_tasks:
+    file: install_helm.yaml
+  when: install_cilium_helm is defined and install_cilium_helm
+
+- name: Configure PodMonitors / ServiceMonitors for Cilium
+  ansible.builtin.include_tasks:
+    file: install_monitors.yaml
+  when: install_cilium_monitors is defined and install_cilium_monitors
+
+- name: Prepare Grafana Dashboards for Cilium
+  ansible.builtin.include_tasks:
+    file: install_grafana_dashboards.yaml
+  when: install_cilium_grafana_dashboards is defined and install_cilium_grafana_dashboards
+

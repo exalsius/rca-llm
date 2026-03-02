@@ -1,0 +1,41 @@
+---
+- name: Check if the file exists
+  ansible.builtin.stat:
+    path: "{{ role_path }}/../../../fetched/{{ exp_global_identifier }}/results/benchmark-summary.csv"
+  register: file_check
+  tags:
+    - benchmark
+
+- name: Deploy data collector pod
+  kubernetes.core.k8s:
+    state: present
+    wait: true
+    template: "{{ role_path }}/templates/llm-benchmark-data-collector.yaml.j2"
+  tags:
+    - benchmark
+  when: not file_check.stat.exists
+
+- name: Retrieve results from data collector pod
+  kubernetes.core.k8s_cp:
+    namespace: "{{ llm_benchmark_namespace }}"
+    pod: llm-benchmark-data-collector
+    container: collector
+    remote_path: /mnt/data/results.csv
+    local_path: "{{ role_path }}/../../../fetched/{{ exp_global_identifier }}/results/benchmark-summary.csv"
+    state: from_pod
+  ignore_errors: true
+  tags:
+    - benchmark
+  when: not file_check.stat.exists
+
+- name: Delete deployed Kubernetes resources for llm-benchmark
+  kubernetes.core.k8s:
+    state: absent
+    wait: true
+    template: "{{ item }}"
+  loop:
+    - "{{ role_path }}/templates/llm-benchmark-data-collector.yaml.j2"
+    - "{{ role_path }}/templates/llm-benchmark.yaml.j2"
+  tags:
+    - benchmark
+  when: not file_check.stat.exists

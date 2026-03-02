@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-json-configmap
+  namespace: {{ loki_json_namespace }}
+data:
+  export_logs.py: |
+    {{ export_logs_python_script_content | indent(4) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: loki-json-pvc
+  namespace: {{ loki_json_namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: loki-json-pod
+  namespace: {{ loki_json_namespace }}
+spec:
+  restartPolicy: Never
+  containers:
+    - name: loki-json-container
+      image: {{ loki_json_image }}
+      imagePullPolicy: Always
+      volumeMounts:
+        - name: loki-json-storage
+          mountPath: /app/json
+        - name: loki-json-config
+          mountPath: /app/config
+      args:
+        - uv
+        - run
+        - --with
+        - requests
+        - --with
+        - python-dateutil
+        - /app/config/export_logs.py
+      env:
+        - name: EXPORT_LOGS_PYTHON_SCRIPT_BASE_URL
+          value: http://loki.observability.svc:3100
+        - name: EXPORT_LOGS_PYTHON_SCRIPT_TARGET_NAMESPACE
+          value: ray
+        - name: EXPORT_LOGS_PYTHON_SCRIPT_START_TIME_STR
+          value: {{ fetch_start_time }}
+        - name: EXPORT_LOGS_PYTHON_SCRIPT_END_TIME_STR
+          value: {{ fetch_end_time }}
+        - name: EXPORT_LOGS_PYTHON_SCRIPT_RESULT_FILE_NAME
+          value: {{ fetch_result_file_name }}
+  volumes:
+    - name: loki-json-storage
+      persistentVolumeClaim:
+        claimName: loki-json-pvc
+    - name: loki-json-config
+      configMap:
+        name: loki-json-configmap

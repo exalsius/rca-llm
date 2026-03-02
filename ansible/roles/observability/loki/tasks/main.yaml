@@ -1,0 +1,5 @@
+---
+- name: Deploy Loki via helm chart
+  ansible.builtin.include_tasks:
+    file: install_helm.yaml
+  when: install_loki_helm is defined and install_loki_helm

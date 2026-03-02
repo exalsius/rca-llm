@@ -1,0 +1,257 @@
+{% set exp_global_data_parallelism = exp_global_data_parallelism | default('1') | int %}
+{% set ray_service_runtime_env_pip_merged = ray_service_runtime_env_pip_default | combine(ray_service_runtime_env_pip_override | default({}), recursive=True) %}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ ray_service_name }}-ray-vllm-config
+  namespace: {{ ray_service_namespace }}
+data:
+  vllm_deployment.py: |
+    {{ vllm_deployment_python_script_content | indent(4) }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ ray_service_name }}-head-fluentbit-config
+  namespace: {{ ray_service_namespace }}
+data:
+  fluent-bit.conf: |
+    [INPUT]
+        Name tail
+        Path /tmp/ray/session_latest/logs/*
+        Tag ray
+        Path_Key true
+        Refresh_Interval 5
+    [OUTPUT]
+        Name loki
+        Match *
+        host loki.observability.svc.cluster.local
+        port 3100
+        labels agent=fluent-bit, namespace={{ ray_service_namespace }}, deployment={{ ray_service_deployment_name }}, service={{ ray_service_name }}, application={{ ray_service_application_name | default('llm') }}, pod=${HOSTNAME}, container={{ ray_service_head_container_name }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ ray_service_name }}-replica-fluentbit-config
+  namespace: {{ ray_service_namespace }}
+data:
+  fluent-bit.conf: |
+    [INPUT]
+        Name tail
+        Path /tmp/ray/session_latest/logs/*
+        Tag ray
+        Path_Key true
+        Refresh_Interval 5
+    [OUTPUT]
+        Name loki
+        Match *
+        host loki.observability.svc.cluster.local
+        port 3100
+        labels agent=fluent-bit, namespace={{ ray_service_namespace }}, deployment={{ ray_service_deployment_name }}, service={{ ray_service_name }}, application={{ ray_service_application_name | default('llm') }}, pod=${HOSTNAME}, container=${CUSTOM_CONTAINER_NAME}
+---
+apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: {{ ray_service_name }}
+  namespace: {{ ray_service_namespace }}
+spec:
+  serveConfigV2: |
+    applications:
+    - name: {{ ray_service_application_name | default('llm') }}
+      route_prefix: {{ ray_service_route_prefix | default('/') }}
+      import_path: {{ ray_service_import_path }}
+      deployments:
+      - name: {{ ray_service_deployment_name }}
+        num_replicas: {{ exp_global_data_parallelism }}
+        max_ongoing_requests: {{ ray_service_max_ongoing_requests }}
+        max_queued_requests: {{ ray_service_max_queued_requests }}
+      runtime_env:
+        pip:
+{% for key, value in (ray_service_runtime_env_pip_merged | default({})).items() %}
+          - "{{ value }}"
+{% endfor %}
+        env_vars:
+          DYNAMIC_RAY_CLI_ARG_TENSOR_PARALLEL_SIZE: "{{ exp_global_tensor_parallelism | default('1') }}"
+          DYNAMIC_RAY_CLI_ARG_PIPELINE_PARALLEL_SIZE: "{{ exp_global_pipeline_parallelism | default('1') }}"
+          DYNAMIC_RAY_CLI_ARG_OTLP_TRACES_ENDPOINT: "http://otel-agent.observability.svc.cluster.local:4317"
+          DYNAMIC_RAY_CLI_ARG_COLLECT_DETAILED_TRACES: "all"
+          BUILD_APP_ARG_PLACEMENT_GROUP_STRATEGY: "{{ exp_global_placement_group_strategy | default('PACK') }}"
+{% for key, value in (ray_service_runtime_env_vars | default({})).items() %}
+          {{ key }}: "{{ value }}"
+{% endfor %}
+{% for key, value in (ray_service_runtime_env_vars_extra | default({})).items() %}
+          {{ key }}: "{{ value }}"
+{% endfor %}
+  rayClusterConfig:
+    headGroupSpec:
+      rayStartParams:
+        dashboard-host: {{ ray_service_dashboard_host | default('0.0.0.0') }}
+      template:
+        metadata:
+          labels:
+            ai.gke.io: {{ ray_service_head_group_label }}
+            model.name: {{ ray_service_name }}
+            app: {{ ray_service_head_container_name }}
+        spec:
+          runtimeClassName: {{ ray_service_runtime_class_name }}
+{% if ray_service_head_group_node_selector is defined %}
+          nodeSelector:
+              kubernetes.io/hostname: {{ ray_service_head_group_node_selector }}
+{% endif %}          
+          containers:
+          - name: {{ ray_service_head_container_name }}
+            securityContext:
+              capabilities:
+                add:
+                - SYS_PTRACE
+            image: {{ ray_service_container_image }}
+            ports:
+            - containerPort: {{ ray_service_gcs_server_port | default(6379) }}
+              name: {{ ray_service_gcs_server_name | default('gcs-server') }}
+            - containerPort: {{ ray_service_dashboard_port | default(8265) }}
+              name: {{ ray_service_dashboard_name | default('dashboard') }}
+            - containerPort: {{ ray_service_client_port | default(10001) }}
+              name: {{ ray_service_client_name | default('client') }}
+            - containerPort: {{ ray_service_serve_port | default(8000) }}
+              name: {{ ray_service_serve_name | default('serve') }}
+            env:
+            - name: PYTHONPATH
+              value: /tmp/files
+            - name: RAY_GRAFANA_IFRAME_HOST
+              value: http://{{ k8s_control_plane_external_ip }}:{{ grafana_existing_node_port }}
+            - name: RAY_GRAFANA_HOST
+              value: http://kube-prometheus-stack-grafana.observability.svc:80
+            - name: RAY_PROMETHEUS_HOST
+              value: http://kube-prometheus-stack-prometheus.observability.svc:9090
+            - name: RAY_memory_monitor_refresh_ms
+              value: "0"
+{% if ray_service_hf_secret_name is not none %}
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ ray_service_hf_secret_name | default('hf-secret') }}
+                  key: {{ ray_service_hf_secret_key | default('hf_api_token') }}
+{% endif %}
+            resources:
+              limits:
+                cpu: {{ ray_service_cpu_per_pod }}
+                memory: {{ ray_service_memory_per_pod }}
+                nvidia.com/gpu: {{ ray_service_gpu_per_pod }}
+              requests:
+                cpu: {{ ray_service_cpu_per_pod }}
+                memory: {{ ray_service_memory_per_pod }}
+                nvidia.com/gpu: {{ ray_service_gpu_per_pod }}
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: {{ ray_service_head_container_name }}-logs
+            - mountPath: /tmp/files
+              name: {{ ray_service_head_container_name }}-files
+          - name: fluentbit
+            image: {{ fluent_bit_container_image }}
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: {{ ray_service_head_container_name }}-logs
+              readOnly: true
+            - mountPath: /fluent-bit/etc/fluent-bit.conf
+              subPath: fluent-bit.conf
+              name: fluentbit-config
+              readOnly: true
+          volumes:
+          - name: {{ ray_service_head_container_name }}-files
+            configMap:
+              name: {{ ray_service_name }}-ray-vllm-config
+          - name: {{ ray_service_head_container_name }}-logs
+            emptyDir: {}
+          - name: fluentbit-config
+            configMap:
+              name: {{ ray_service_name }}-head-fluentbit-config
+{% if exp_global_num_ray_replica_pods | default(ray_service_num_extra_replicas) | default(exp_global_data_parallelism - 1) > 0 %}
+    workerGroupSpecs:
+{% for i in range(exp_global_num_ray_replica_pods | default(ray_service_num_extra_replicas) | default(exp_global_data_parallelism - 1)) %}
+{% set ray_service_replica_container_name = 'ray-replicas-' ~ i %}
+    - replicas: 1
+      minReplicas: 1
+      maxReplicas: 1
+      groupName: {{ ray_service_replica_container_name }}
+      rayStartParams: {}
+      template:
+        metadata:
+          labels:
+            ai.gke.io: {{ ray_service_replica_group_label }}
+            model.name: {{ ray_service_name }}
+            app: {{ ray_service_replica_container_name }}
+        spec:
+          runtimeClassName: {{ ray_service_runtime_class_name }}
+{% if ray_service_replica_group_node_selector is defined %}
+          nodeSelector:
+              kubernetes.io/hostname: {{ ray_service_replica_group_node_selector }}
+{% endif %}
+          containers:
+          - name: {{ ray_service_replica_container_name }}
+            securityContext:
+              capabilities:
+                add:
+                - SYS_PTRACE
+            image: {{ ray_service_container_image }}
+{% if ray_service_hf_secret_name is not none %}
+            env:
+            - name: PYTHONPATH
+              value: /tmp/files
+            - name: HUGGING_FACE_HUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ ray_service_hf_secret_name | default('hf-secret') }}
+                  key: {{ ray_service_hf_secret_key | default('hf_api_token') }}
+{% endif %} 
+            resources:
+              limits:
+                cpu: {{ ray_service_cpu_per_pod }}
+                memory: {{ ray_service_memory_per_pod }}
+                nvidia.com/gpu: {{ ray_service_gpu_per_pod }}
+              requests:
+                cpu: {{ ray_service_cpu_per_pod }}
+                memory: {{ ray_service_memory_per_pod }}
+                nvidia.com/gpu: {{ ray_service_gpu_per_pod }}
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: {{ ray_service_replica_container_name }}-logs
+            - mountPath: /tmp/files
+              name: {{ ray_service_replica_container_name }}-files
+          - name: fluentbit
+            image: {{ fluent_bit_container_image }}
+            env:
+            - name: CUSTOM_CONTAINER_NAME
+              value: {{ ray_service_replica_container_name }}
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+            volumeMounts:
+            - mountPath: /tmp/ray
+              name: {{ ray_service_replica_container_name }}-logs
+              readOnly: true
+            - mountPath: /fluent-bit/etc/fluent-bit.conf
+              subPath: fluent-bit.conf
+              name: fluentbit-config
+              readOnly: true
+          volumes:
+          - name: {{ ray_service_replica_container_name }}-files
+            configMap:
+              name: {{ ray_service_name }}-ray-vllm-config
+          - name: {{ ray_service_replica_container_name }}-logs
+            emptyDir: {}
+          - name: fluentbit-config
+            configMap:
+              name: {{ ray_service_name }}-replica-fluentbit-config
+{% endfor %}
+{% endif %}

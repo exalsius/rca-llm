@@ -1,0 +1,23 @@
+---
+- name: Install k3s
+  hosts: all
+  become: true
+  pre_tasks:
+    - name: apt update
+      ansible.builtin.apt:
+        update_cache: true
+    - name: Ensure K3s runtime directories exist under /ephemeral/k3s
+      file:
+        path: "/ephemeral/k3s/{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      loop:
+        - kubelet
+        - local-storage
+      ignore_errors: true
+  vars:
+    master_ip: "{{ hostvars[groups['control'][0]]['ansible_host'] }}"
+  roles:
+    - exalsius.k3s

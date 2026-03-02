@@ -1,0 +1,18 @@
+- name: Add OpenTelemetry helm repository
+  kubernetes.core.helm_repository:
+    name: open-telemetry 
+    repo_url: https://open-telemetry.github.io/opentelemetry-helm-charts
+
+- name: Install open-telemetry/opentelemetry-operator
+  kubernetes.core.helm:
+    name: opentelemetry-operator
+    chart_ref: open-telemetry/opentelemetry-operator
+    namespace: observability
+    chart_version: "{{ opentelemetry_helm_chart_version }}" 
+    state: present
+    wait: true
+    timeout: 900s
+    values_files:
+      - "{{ role_path }}/files/open-telemetry-operator-overrides.yaml"
+    update_repo_cache: true
+      

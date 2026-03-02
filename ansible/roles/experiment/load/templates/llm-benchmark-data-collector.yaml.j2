@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: llm-benchmark-data-collector
+  namespace: {{ llm_benchmark_namespace }}
+spec:
+  containers:
+    - name: collector
+      image: busybox:1.28
+      command: ["/bin/sh", "-c", "ping localhost"]
+      volumeMounts:
+        - name: llm-benchmark-storage
+          mountPath: /mnt/data
+  volumes:
+    - name: llm-benchmark-storage
+      persistentVolumeClaim:
+        claimName: llm-benchmark-pvc

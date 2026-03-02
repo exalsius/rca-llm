@@ -1,0 +1,64 @@
+---
+- name: Extract ray-service creation timestamp
+  set_fact:
+    ray_service_start_time: "{{ ray_service_crd_info.resources[0].metadata.creationTimestamp }}"
+    ray_service_end_time: "{{ now().strftime('%Y-%m-%dT%H:%M:%S%z') }}"
+  tags:
+    - delete
+
+- name: Set fact for total-results folder
+  set_fact:
+    fetch_result_total_folder: "{{ role_path }}/../../../fetched/{{ exp_global_identifier }}/results"
+  tags:
+    - delete
+
+- name: Fetch all prometheus metrics
+  ansible.builtin.include_tasks:
+    file: _fetch_metrics.yaml
+    apply:
+      tags: delete
+  vars:
+    fetch_start_time: "{{ ray_service_start_time }}"
+    fetch_end_time: "{{ ray_service_end_time }}"
+    fetch_result_file_name: prometheus-metrics-all.csv
+    fetch_result_folder: "{{ fetch_result_total_folder }}"
+  tags:
+    - delete
+
+- name: Fetch all loki logs
+  ansible.builtin.include_tasks:
+    file: _fetch_logs.yaml
+    apply:
+      tags: delete
+  vars:
+    fetch_start_time: "{{ ray_service_start_time }}"
+    fetch_end_time: "{{ ray_service_end_time }}"
+    fetch_result_file_name: loki-logs-all.json
+    fetch_result_folder: "{{ fetch_result_total_folder }}"
+  tags:
+    - delete
+
+- name: Fetch all deepflow traces
+  ansible.builtin.include_tasks:
+    file: _fetch_traces.yaml
+    apply:
+      tags: delete
+  vars:
+    fetch_start_time: "{{ ray_service_start_time }}"
+    fetch_end_time: "{{ ray_service_end_time }}"
+    fetch_result_file_name: deepflow-traces-all
+    fetch_result_folder: "{{ fetch_result_total_folder }}"
+  tags:
+    - delete
+
+- name: Execute RCA collector for whole time span
+  ansible.builtin.include_tasks:
+    file: _fetch_rca_data.yaml
+    apply:
+      tags: delete
+  vars:
+    fetch_start_time: "{{ ray_service_start_time }}"
+    fetch_end_time: "{{ ray_service_end_time }}"
+    fetch_result_folder: "{{ fetch_result_total_folder }}"
+  tags:
+    - delete

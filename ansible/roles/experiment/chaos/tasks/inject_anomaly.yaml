@@ -1,0 +1,73 @@
+---
+- name: Wait a defined time before injecting chaos anomaly
+  ansible.builtin.wait_for:
+    timeout: "{{ chaos_anomaly_injection_before_wait }}"
+  when: chaos_anomaly_injection_before_wait is defined
+  tags:
+    - benchmark
+
+- name: Configure chaos anomaly experiment (if not GPU stress)
+  kubernetes.core.k8s:
+    state: present
+    wait: true
+    template: "{{ role_path }}/templates/{{ chaos_experiment_scenario }}.yaml.j2"
+  register: chaos_anomaly_injection_apply_result
+  when: chaos_experiment_scenario != 'stress-chaos-gpu'
+  tags:
+    - benchmark
+
+- name: Configure chaos anomaly experiment (if GPU stress)
+  ansible.builtin.include_tasks:
+    file: _modify_gpu_configuration.yaml
+    apply:
+      tags: benchmark
+  vars:
+    save_result: true
+  when: chaos_experiment_scenario == 'stress-chaos-gpu'
+  tags:
+    - benchmark
+
+- name: Record CRD information about chaos anomaly injection (if not GPU stress)
+  copy:
+    content: "{{ chaos_anomaly_injection_apply_result | to_nice_json }}"
+    dest: "{{ chaos_anomaly_injection_result_folder }}/apply_result_chaos_anomaly_injection.json"
+  when:
+    - chaos_anomaly_injection_result_folder is defined
+    - chaos_experiment_scenario != 'stress-chaos-gpu'
+  tags:
+    - benchmark
+
+- name: Wait for the chaos anomaly to be finished
+  ansible.builtin.wait_for:
+    timeout: "{{ chaos_anomaly_injection_duration }}"
+  when: chaos_anomaly_injection_duration is defined
+  tags:
+    - benchmark
+
+- name: Delete chaos anomaly experiment (if not GPU stress)
+  kubernetes.core.k8s:
+    state: absent
+    wait: true
+    template: "{{ role_path }}/templates/{{ chaos_experiment_scenario }}.yaml.j2"
+  when: chaos_experiment_scenario != 'stress-chaos-gpu'
+  tags:
+    - benchmark
+
+- name: Delete chaos anomaly experiment (if GPU stress)
+  ansible.builtin.include_tasks:
+    file: _modify_gpu_configuration.yaml
+    apply:
+      tags: benchmark
+  vars:
+    # Reset power limit to default
+    reset_power_limit: true
+  when: chaos_experiment_scenario == 'stress-chaos-gpu'
+  tags:
+    - benchmark
+
+- name: Wait a defined time after injecting chaos anomaly
+  ansible.builtin.wait_for:
+    timeout: "{{ chaos_anomaly_injection_after_wait }}"
+  when: chaos_anomaly_injection_after_wait is defined
+  tags:
+    - benchmark

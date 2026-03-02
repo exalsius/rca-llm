@@ -1,0 +1,6 @@
+global:
+  storageClass: local-path
+  replicas: 1
+
+grafana:
+  enabled: false

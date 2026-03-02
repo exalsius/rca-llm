@@ -1,0 +1,25 @@
+---
+- name: Create observability namespace
+  kubernetes.core.k8s:
+    name: observability
+    api_version: v1
+    kind: Namespace
+    state: present
+    
+- name: Add DeepFlow helm repository
+  kubernetes.core.helm_repository:
+    name: deepflow
+    repo_url: https://deepflowio.github.io/deepflow
+
+- name: Install deepflow/deepflow
+  kubernetes.core.helm:
+    name: deepflow
+    chart_ref: deepflow/deepflow
+    namespace: observability
+    chart_version: "{{ deepflow_helm_chart_version }}"
+    state: present
+    wait: true
+    timeout: 900s
+    values_files:
+      - "{{ role_path }}/files/deepflow-helm-overrides.yaml"
+    update_repo_cache: true

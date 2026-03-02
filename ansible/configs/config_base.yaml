@@ -1,0 +1,33 @@
+ray_service_ui_namespace: ray
+ray_service_ui_image: us-docker.pkg.dev/google-samples/containers/gke/gradio-app:v1.0.3
+ray_service_ui_context_path: /v1/chat/completions
+
+ray_service_namespace: ray
+ray_service_container_image: rayproject/ray-ml:2.46.0.0e19ea
+ray_service_runtime_class_name: nvidia
+
+# defines the resource configuration for each compute pod in the Ray cluster (head pod and potential replica pods)
+ray_service_cpu_per_pod: '8.0'
+ray_service_gpu_per_pod: '1.0'
+ray_service_memory_per_pod: 16Gi
+
+# defines the configuration for the actors in each deployment replica
+ray_service_cpu_per_actor: '6'
+ray_service_gpu_per_actor: '1'
+
+llm_benchmark_namespace: default
+llm_benchmark_image: <your-docker-registry>/locust-llm:latest  
+
+prometheus_csv_namespace: observability
+prometheus_csv_image: ghcr.io/astral-sh/uv:python3.12-alpine
+
+loki_json_namespace: observability
+loki_json_image: ghcr.io/astral-sh/uv:python3.12-alpine
+
+deepflow_artifact_namespace: observability
+deepflow_artifact_image: ghcr.io/astral-sh/uv:python3.12-alpine
+
+rca_collector_namespace: observability
+rca_collector_image: ghcr.io/astral-sh/uv:python3.12-bookworm
+
+fluent_bit_container_image: fluent/fluent-bit:3.1.0

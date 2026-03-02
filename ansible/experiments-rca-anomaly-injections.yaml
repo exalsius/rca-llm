@@ -1,0 +1,79 @@
+---
+# The experiments below have been used in the context of our comprehensive evaluation of RCA methods
+# Repeat for (adapt exp_type_identifier and chaos_experiment_scenario): 
+# - network-chaos-delay
+# - stress-chaos-cpu
+# - stress-chaos-memory
+# - stress-chaos-gpu
+- name: "Evaluate scenario: Analyze a stressed LLM"
+  ansible.builtin.import_playbook: execute-experiment.yaml
+  vars:
+    exp_id: config_vllm
+    model_id: falcon-h1-7b-instruct
+    exp_type_identifier: gpu-stress-ray-replicas-0
+    exp_global_data_parallelism: 4
+    export_traces_python_script_export_target: request_list
+    # Configure constant load generation
+    llm_benchmark_iterations: 10
+    llm_benchmark_duration: 360
+    llm_benchmark_target_qps_values: [5]
+    llm_benchmark_target_qps_distribution: constant
+    llm_benchmark_concurrent_workers: 300
+    llm_benchmark_concurrent_workers_spawn_rate: 300
+    # Configure chaos injection
+    chaos_experiment_scenario: stress-chaos-gpu
+    chaos_anomaly_injection_before_wait: 285
+    chaos_anomaly_injection_after_wait: 60
+    chaos_anomaly_injection_duration: 60
+    chaos_anomaly_injection_target_container: ray-replicas-0
+    chaos_anomaly_injection_label_selectors:
+      app: ray-replicas-0
+
+- name: "Evaluate scenario: Analyze a stressed LLM"
+  ansible.builtin.import_playbook: execute-experiment.yaml
+  vars:
+    exp_id: config_vllm
+    model_id: falcon-h1-7b-instruct
+    exp_type_identifier: gpu-stress-ray-replicas-1
+    exp_global_data_parallelism: 4
+    export_traces_python_script_export_target: request_list
+    # Configure constant load generation
+    llm_benchmark_iterations: 10
+    llm_benchmark_duration: 360
+    llm_benchmark_target_qps_values: [5]
+    llm_benchmark_target_qps_distribution: constant
+    llm_benchmark_concurrent_workers: 300
+    llm_benchmark_concurrent_workers_spawn_rate: 300
+    # Configure chaos injection
+    chaos_experiment_scenario: stress-chaos-gpu
+    chaos_anomaly_injection_before_wait: 285
+    chaos_anomaly_injection_after_wait: 60
+    chaos_anomaly_injection_duration: 60
+    chaos_anomaly_injection_target_container: ray-replicas-1
+    chaos_anomaly_injection_label_selectors:
+      app: ray-replicas-1
+
+- name: "Evaluate scenario: Analyze a stressed LLM"
+  ansible.builtin.import_playbook: execute-experiment.yaml
+  vars:
+    exp_id: config_vllm
+    model_id: falcon-h1-7b-instruct
+    exp_type_identifier: gpu-stress-ray-replicas-2
+    exp_global_data_parallelism: 4
+    export_traces_python_script_export_target: request_list
+    # Configure constant load generation
+    llm_benchmark_iterations: 10
+    llm_benchmark_duration: 360
+    llm_benchmark_target_qps_values: [5]
+    llm_benchmark_target_qps_distribution: constant
+    llm_benchmark_concurrent_workers: 300
+    llm_benchmark_concurrent_workers_spawn_rate: 300
+    # Configure chaos injection
+    chaos_experiment_scenario: stress-chaos-gpu
+    chaos_anomaly_injection_before_wait: 285
+    chaos_anomaly_injection_after_wait: 60
+    chaos_anomaly_injection_duration: 60
+    chaos_anomaly_injection_target_container: ray-replicas-2
+    chaos_anomaly_injection_label_selectors:
+      app: ray-replicas-2
+

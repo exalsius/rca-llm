@@ -1,0 +1,8 @@
+exp_global_model_name: falcon-h1-7b-instruct
+exp_global_model_id: tiiuae/Falcon-H1-7B-Instruct
+
+ray_service_runtime_env_pip_override:
+    # https://github.com/vllm-project/vllm/commit/20bd6f4d2ee10d6187d93e4bc6a64f78195243a2
+    vllm: https://wheels.vllm.ai/20bd6f4d2ee10d6187d93e4bc6a64f78195243a2/vllm-1.0.0.dev-cp38-abi3-manylinux1_x86_64.whl
+    # https://github.com/huggingface/transformers/commit/4542086db764080c4333beef7b9f4327b4f8ff64
+    transformers: git+https://github.com/huggingface/transformers.git@4542086db764080c4333beef7b9f4327b4f8ff64

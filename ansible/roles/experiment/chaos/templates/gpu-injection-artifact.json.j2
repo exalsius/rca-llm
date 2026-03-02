@@ -1,0 +1,31 @@
+{
+    "result": {
+        "metadata": {
+            "creationTimestamp": "{{ now(utc=True).strftime('%Y-%m-%dT%H:%M:%SZ') }}"
+        },
+        "spec": {
+            "duration": "{{ chaos_anomaly_injection_duration }}s",
+            "mode": "{{ stress_chaos_gpu_mode }}",
+            "selector": {
+                "labelSelectors": {
+                    "model.name": "{{ ray_service_name }}",
+                    "ray.io/serve": "true"
+{%- for key, value in (chaos_anomaly_injection_label_selectors | default({})).items() %}
+,
+                    "{{ key }}": "{{ value }}"
+{%- endfor %}
+                },
+                "namespaces": [
+                    "{{ stress_chaos_gpu_namespace }}"
+                ]
+            },
+            "stats": {
+                "gpu_power_limit": "{{ stress_chaos_gpu_power_limit }}",
+                "selected_pod": "{{ pod_name }}",
+                "verification_msg": "{{ verification_msg }}",
+                "gpu_pci_bus_id": "{{ pod_pci_bus_id }}",
+                "pod_gpu_index": "{{ pod_gpu_index }}"
+            }
+        }
+    }
+}

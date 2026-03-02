@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rca-collector-data-collector
+  namespace: {{ rca_collector_namespace }}
+spec:
+  containers:
+    - name: collector
+      image: busybox:1.28
+      command: ["/bin/sh", "-c", "ping localhost"]
+      volumeMounts:
+        - name: rca-collector-storage
+          mountPath: /app/results
+  volumes:
+    - name: rca-collector-storage
+      persistentVolumeClaim:
+        claimName: rca-collector-pvc

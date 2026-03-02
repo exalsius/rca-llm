@@ -1,0 +1,78 @@
+# Execute rca collector method
+- name: Define rca collector result folder
+  set_fact:
+    rca_collector_result_folder: "{{ fetch_result_folder }}/rca-collector-results"
+
+- name: Create directory for rca collector results
+  file:
+    path: "{{ rca_collector_result_folder }}"
+    state: directory
+
+- name: Read Python script for rca collector
+  set_fact:
+    export_rca_data_python_script_content: "{{ lookup('file', '{{ role_path }}/files/export_rca_data.py') }}"
+
+- name: Apply experiment manifest for rca collector
+  kubernetes.core.k8s:
+    state: present
+    template: "{{ role_path }}/templates/rca-collector.yaml.j2"
+
+- name: Get the current state of the rca collector
+  k8s_info:
+    api_version: v1
+    kind: Pod
+    name: rca-collector-pod
+    namespace: "{{ rca_collector_namespace }}"
+  register: pod_info
+  until: pod_info|json_query('resources[*].status.phase')|unique == ["Succeeded"]
+  delay: 10
+  retries: 300
+
+- name: Delete rca collector pod
+  kubernetes.core.k8s:
+    state: absent
+    wait: true
+    kind: Pod
+    namespace: "{{ rca_collector_namespace }}"
+    name: rca-collector-pod
+
+# Collect results from rca collector
+
+- name: Deploy data collector pod
+  kubernetes.core.k8s:
+    state: present
+    wait: true
+    template: "{{ role_path }}/templates/rca-collector-data-collector.yaml.j2"
+
+- name: Get the list of result files from pod
+  kubernetes.core.k8s_exec:
+    namespace: "{{ rca_collector_namespace }}"
+    pod: rca-collector-data-collector
+    container: collector
+    command: ls /app/results
+  register: file_list_result
+
+- name: Fetch result files from pod
+  kubernetes.core.k8s_cp:
+    namespace: "{{ rca_collector_namespace }}"
+    pod: rca-collector-data-collector
+    container: collector
+    remote_path: /app/results/{{ remote_result_file }}
+    local_path: "{{ rca_collector_result_folder }}/{{ remote_result_file }}"
+    state: from_pod
+  loop: "{{ file_list_result.stdout_lines }}"
+  loop_control:
+    loop_var: remote_result_file
+
+# Cleanup
+
+- name: Delete deployed Kubernetes resources for rca collector
+  kubernetes.core.k8s:
+    state: absent
+    wait: true
+    template: "{{ to_delete }}"
+  loop:
+    - "{{ role_path }}/templates/rca-collector-data-collector.yaml.j2"
+    - "{{ role_path }}/templates/rca-collector.yaml.j2"
+  loop_control:
+    loop_var: to_delete

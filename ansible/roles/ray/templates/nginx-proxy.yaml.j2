@@ -1,0 +1,225 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-proxy-fluentbit-config
+  namespace: ray
+data:
+  fluent-bit.conf: |
+    [INPUT]
+        Name tail
+        Path /var/log/nginx/*
+        Tag nginx
+        Path_Key true
+        Refresh_Interval 5
+    [OUTPUT]
+        Name loki
+        Match *
+        host loki.observability.svc.cluster.local
+        port 3100
+        labels agent=fluent-bit, namespace=ray, deployment=nginx-proxy-deployment, service=nginx-proxy-service, application=nginx, pod=${HOSTNAME}, container=nginx-proxy
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nginx-proxy-auth-secret
+  namespace: ray
+type: Opaque
+data:
+  auth: {{ nginx_auth_encoded_data | default("") }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-proxy-config
+  namespace: ray
+data:
+  nginx.conf: |
+    load_module modules/ngx_otel_module.so;
+
+    user  nginx;
+    worker_processes  auto;
+    error_log  /var/log/nginx/error.log notice;
+    pid        /var/run/nginx.pid;
+
+    events {
+        worker_connections  1024;
+    }
+
+    http {
+        resolver kube-dns.kube-system.svc.cluster.local;
+
+        otel_exporter {
+          endpoint    otel-agent.observability.svc.cluster.local:4317;
+        }
+        otel_service_name nginx;
+        otel_trace on;
+        otel_trace_context propagate;
+
+        include       /etc/nginx/mime.types;
+        default_type  application/octet-stream;
+        log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                          '$status $body_bytes_sent "$http_referer" '
+                          '"$http_user_agent" "$http_x_forwarded_for"';
+        access_log  /var/log/nginx/access.log  main;
+        sendfile        on;
+        keepalive_timeout  65;
+        include /etc/nginx/conf.d/*.conf;
+    }
+  default.conf: |
+    server {
+        listen 80;
+        add_header x-request-id $request_id;
+        add_header traceparent $http_traceparent;
+        add_header tracestate $http_tracestate;
+
+        location ~ ^/([^/]+)/dashboard/?(.*)$ {
+            set $model_name $1;
+            set $rest_of_path $2;
+
+            auth_basic "Authentication Required";
+            auth_basic_user_file /etc/nginx/auth/auth;
+
+            proxy_pass http://$model_name-head-svc.ray.svc.cluster.local:{{ ray_service_dashboard_port | default(8265) }}/$rest_of_path;
+
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-NginX-Proxy true;
+            proxy_set_header x-request-id $request_id;
+        }
+
+        location ~ ^/([^/]+)/(v1/)?chat/completions {
+            set $model_name $1;
+
+            proxy_pass http://$model_name-serve-svc.ray.svc.cluster.local:{{ ray_service_serve_port | default(8000) }}/chat/completions;
+
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-NginX-Proxy true;
+            proxy_set_header x-request-id $request_id;
+
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            proxy_buffering off;
+            proxy_cache off;
+            chunked_transfer_encoding on;
+        }
+
+        location ~ ^/([^/]+)/(v1/)?completions {
+            set $model_name $1;
+
+            proxy_pass http://$model_name-serve-svc.ray.svc.cluster.local:{{ ray_service_serve_port | default(8000) }}/completions;
+
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-NginX-Proxy true;
+            proxy_set_header x-request-id $request_id;
+        }
+
+        location ~ ^/prometheus/?(.*)$ {
+            set $rest_of_path $1;
+
+            auth_basic "Authentication Required";
+            auth_basic_user_file /etc/nginx/auth/auth;
+
+            proxy_pass http://kube-prometheus-stack-prometheus.observability.svc:9090/$rest_of_path?$args;
+
+            proxy_set_header Host $http_host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-NginX-Proxy true;
+            proxy_set_header x-request-id $request_id;
+
+            proxy_redirect http://$host/ $scheme://$http_host/prometheus/;
+            proxy_redirect / $scheme://$http_host/prometheus/;
+
+            sub_filter_once off;
+            sub_filter 'href="/'  'href="/prometheus/';
+            sub_filter 'src="/'   'src="/prometheus/';
+            sub_filter 'action="/' 'action="/prometheus/';
+        }
+
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-proxy-deployment
+  namespace: ray
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-proxy
+  template:
+    metadata:
+      labels:
+        app: nginx-proxy
+    spec:
+      containers:
+      - name: nginx-proxy
+        image: nginx:1.27.3-alpine-otel
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: nginx-proxy-auth-secret-volume
+          mountPath: /etc/nginx/auth
+        - name: nginx-proxy-config-volume
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+        - name: nginx-proxy-config-volume
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: default.conf
+        - name: nginx-proxy-logs
+          mountPath: /var/log/nginx
+      - name: fluentbit
+        image: {{ fluent_bit_container_image }}
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+        volumeMounts:
+        - mountPath: /var/log/nginx
+          name: nginx-proxy-logs
+          readOnly: true
+        - mountPath: /fluent-bit/etc/fluent-bit.conf
+          subPath: fluent-bit.conf
+          name: fluentbit-config
+          readOnly: true
+      volumes:
+      - name: nginx-proxy-auth-secret-volume
+        secret:
+          secretName: nginx-proxy-auth-secret
+      - name: nginx-proxy-config-volume
+        configMap:
+          name: nginx-proxy-config
+      - name: nginx-proxy-logs
+        emptyDir: {}
+      - name: fluentbit-config
+        configMap:
+          name: nginx-proxy-fluentbit-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-proxy-service
+  namespace: ray
+spec:
+  type: NodePort
+  selector:
+    app: nginx-proxy
+  ports:
+  - name: http-web
+    protocol: TCP
+    port: 80
+    targetPort: 80
+    nodePort: {{ nginx_node_port_override | int }}

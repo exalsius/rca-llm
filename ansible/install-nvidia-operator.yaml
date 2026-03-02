@@ -1,0 +1,70 @@
+---
+# This playbook is used to install the nvidia-gpu-operator on a Kubernetes cluster
+# see https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/getting-started.html#operator-install-guide
+
+- name: Install nvidia-gpu-operator in Kubernetes cluster
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Create nvidia-gpu-operator namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: gpu-operator
+            labels:
+              pod-security.kubernetes.io/enforce: privileged
+
+    - name: Add NVIDIA helm repository
+      kubernetes.core.helm_repository:
+        name: nvidia
+        repo_url: https://helm.ngc.nvidia.com/nvidia
+
+    - name: Deploy the nvidia-gpu-operator into the cluster
+      kubernetes.core.helm:
+        name: gpu-operator
+        chart_ref: nvidia/gpu-operator
+        namespace: gpu-operator
+        values:
+          toolkit:
+            env:
+              - name: CONTAINERD_CONFIG
+                value: /var/lib/rancher/k3s/agent/etc/containerd/config.toml
+              - name: CONTAINERD_SOCKET
+                value: /run/k3s/containerd/containerd.sock
+              - name: CONTAINERD_RUNTIME_CLASS
+                value: nvidia
+              - name: CONTAINERD_SET_AS_DEFAULT
+                value: "true"
+        state: present
+        wait: true
+        timeout: 900s
+        update_repo_cache: true
+
+    - name: Apply PodMonitor for NVIDIA DCGM Exporter
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: monitoring.coreos.com/v1
+          kind: PodMonitor
+          metadata:
+            name: nvidia-dcgm-exporter-monitor
+            namespace: observability
+            labels:
+              release: kube-prometheus-stack
+          spec:
+            jobLabel: nvidia-dcgm-exporter
+            selector:
+              matchLabels:
+                app: nvidia-dcgm-exporter
+            namespaceSelector:
+              matchNames:
+                - gpu-operator
+            podMetricsEndpoints:
+              - port: "metrics"
+                path: /metrics
+      # may fail if prometheus CRDs not yet installed
+      ignore_errors: true

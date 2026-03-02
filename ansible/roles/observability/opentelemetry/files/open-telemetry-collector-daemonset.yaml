@@ -1,0 +1,167 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-agent-config
+  namespace: observability
+  labels:
+    app: opentelemetry
+    component: otel-agent-config
+data:
+  otel-agent-config: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    exporters:
+      otlphttp:
+        traces_endpoint: "http://deepflow-agent.observability.svc.cluster.local:80/api/v1/otel/trace"
+        tls:
+          insecure: true
+        retry_on_failure:
+          enabled: true
+      debug:
+
+    processors:
+      batch:
+      memory_limiter:
+        # 80% of maximum memory up to 2G
+        limit_mib: 400
+        # 25% of limit up to 2G
+        spike_limit_mib: 100
+        check_interval: 5s
+      k8sattributes:
+      resource:
+        attributes:
+        - key: app.host.ip
+          from_attribute: k8s.pod.ip
+          action: insert
+
+    extensions:
+      zpages: {}
+
+    service:
+      extensions: [zpages]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [k8sattributes, resource, memory_limiter, batch]
+          exporters: [otlphttp]
+        metrics:
+          receivers: [otlp]
+          processors: [k8sattributes, resource, memory_limiter, batch]
+          exporters: [debug]
+        logs:
+          receivers: [otlp]
+          processors: [k8sattributes, resource, memory_limiter, batch]
+          exporters: [debug]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: otel-agent
+  namespace: observability
+  labels:
+    app: opentelemetry
+    component: otel-agent
+spec:
+  selector:
+    matchLabels:
+      app: opentelemetry
+      component: otel-agent
+  template:
+    metadata:
+      labels:
+        app: opentelemetry
+        component: otel-agent
+    spec:
+      containers:
+      - command:
+          - "/otelcol-contrib"
+          - "--config=/conf/otel-agent-config.yaml"
+        image: otel/opentelemetry-collector-contrib:0.117.0
+        name: otel-agent
+        resources:
+          limits:
+            cpu: 1
+            memory: 2Gi
+          requests:
+            cpu: 200m
+            memory: 400Mi
+        ports:
+        - containerPort: 55679 # ZPages endpoint.
+        - containerPort: 4317 # Default OpenTelemetry receiver port.
+        - containerPort: 4318
+        - containerPort: 8888  # Metrics.
+        env:
+          - name: HOST_IP
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: status.hostIP
+        volumeMounts:
+        - name: otel-agent-config-vol
+          mountPath: /conf
+      serviceAccountName: opentelemetry-collector
+      serviceAccount: opentelemetry-collector
+      volumes:
+        - configMap:
+            name: otel-agent-config
+            items:
+              - key: otel-agent-config
+                path: otel-agent-config.yaml
+          name: otel-agent-config-vol
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-agent
+  namespace: observability
+  labels:
+    app: opentelemetry
+    component: otel-agent
+spec:
+  ports:
+  - name: otlp-grpc # Default endpoint for OpenTelemetry gRPC receiver.
+    port: 4317
+    protocol: TCP
+    targetPort: 4317
+  - name: otlp-http # Default endpoint for OpenTelemetry HTTP receiver.
+    port: 4318
+    protocol: TCP
+    targetPort: 4318
+  - name: metrics # Default endpoint for querying metrics.
+    port: 8888
+  selector:
+    component: otel-agent
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: opentelemetry-collector
+  namespace: observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector-role
+rules:
+- apiGroups: ["*"]
+  resources: ["*"]
+  verbs: ["watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector-role-binding
+subjects:
+- kind: ServiceAccount
+  name: opentelemetry-collector
+  namespace: observability
+roleRef:
+  kind: ClusterRole
+  name: otel-collector-role
+  apiGroup: rbac.authorization.k8s.io

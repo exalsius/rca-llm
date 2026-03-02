@@ -1,0 +1,5 @@
+---
+- name: Deploy Prometheus-Stack via helm chart
+  ansible.builtin.include_tasks:
+    file: install_helm.yaml
+  when: install_prometheus_helm is defined and install_prometheus_helm

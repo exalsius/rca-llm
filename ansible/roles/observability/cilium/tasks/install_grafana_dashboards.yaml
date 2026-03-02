@@ -1,0 +1,62 @@
+---
+- name: Check for Cilium DaemonSet
+  k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    namespace: kube-system
+    name: cilium
+  register: cilium_info
+  ignore_errors: true
+
+- name: Set cilium_deployed to true if DaemonSet exists
+  set_fact:
+    cilium_deployed: "{{ cilium_info.resources | length > 0 }}"
+  when: cilium_info.resources is defined
+
+- name: Print whether Cilium is deployed
+  debug:
+    msg: "Cilium is deployed: {{ cilium_deployed }}"
+
+- name: Download the repository archive
+  ansible.builtin.command:
+    cmd: "wget -O {{ role_path }}/../../../fetched/cilium_repo.zip https://github.com/cilium/cilium/archive/refs/tags/v{{ cilium_helm_chart_version }}.zip"
+  register: download_result
+  when: cilium_deployed
+
+- name: Extract the downloaded repository
+  ansible.builtin.unarchive:
+    src: "{{ role_path }}/../../../fetched/cilium_repo.zip"
+    dest: "{{ role_path }}/../../../fetched"
+    remote_src: yes
+  when: cilium_deployed
+
+- name: Find files with the specific suffix
+  find:
+    paths: "{{ role_path }}/../../../fetched/cilium-{{ cilium_helm_chart_version }}"
+    recurse: true
+    use_regex: true
+    patterns: ".*-dashboard\\.json"
+  register: found_files
+  when: cilium_deployed
+
+- name: Create directory for cilium grafana configs
+  file:
+    path: "{{ role_path }}/../../../fetched/cilium-grafana-configs"
+    state: directory
+  when: cilium_deployed
+
+- name: Copy files to the destination folder
+  copy:
+    src: "{{ item.path }}"
+    dest: "{{ role_path }}/../../../fetched/cilium-grafana-configs/{{ item.path | basename }}"
+  loop: "{{ found_files.files }}"
+  when: cilium_deployed
+
+- name: Clean up downloaded files
+  file:
+    path: "{{ role_path }}/../../../fetched/{{ item }}"
+    state: absent
+  loop:
+    - cilium_repo.zip
+    - cilium-{{ cilium_helm_chart_version }}
+  when: cilium_deployed

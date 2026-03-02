@@ -1,0 +1,127 @@
+---
+- name: Create ray namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: ray
+        labels:
+          # turn on ambient dataplane
+          istio.io/dataplane-mode: ambient
+          istio.io/use-waypoint: ray-waypoint
+
+- name: Configure istio peer authentication
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: security.istio.io/v1beta1
+      kind: PeerAuthentication
+      metadata:
+        name: ray-peer-auth
+        namespace: ray
+      spec:
+        mtls:
+          mode: DISABLE
+
+- name: Create istio authorization policy
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: security.istio.io/v1beta1
+      kind: AuthorizationPolicy
+      metadata:
+        name: allow-all
+        namespace: ray
+      spec:
+        rules:
+        - {}
+        action: ALLOW
+
+- name: Add Ray project helm repository
+  kubernetes.core.helm_repository:
+    name: kuberay
+    repo_url: https://ray-project.github.io/kuberay-helm/
+
+- name: Deploy the KubeRay operator
+  kubernetes.core.helm:
+    name: kuberay-operator
+    chart_ref: kuberay/kuberay-operator 
+    release_namespace: ray
+    chart_version: "{{ ray_helm_chart_version }}"
+    state: present
+    wait: true
+    values:
+      logging:
+        baseDir: /tmp/kuberay
+        fileName: kuberay-operator.log
+      # add labels to the operator deployment, needed for istio
+      labels:
+        app: kuberay-operator
+    timeout: 900s
+    update_repo_cache: true
+
+- name: Create kuberay-operator Fluent Bit ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: kuberay-operator-fluentbit-config
+        namespace: ray
+      data:
+        fluent-bit.conf: |
+          [INPUT]
+              Name tail
+              Path /tmp/kuberay/*
+              Tag kuberay
+              Path_Key true
+              Refresh_Interval 5
+          [OUTPUT]
+              Name loki
+              Match *
+              host loki.observability.svc.cluster.local
+              port 3100
+              labels agent=fluent-bit, namespace=ray, deployment=kuberay-operator, service=kuberay-operator, application=kuberay-operator, pod=${HOSTNAME}, container=kuberay-operator
+
+
+- name: Inject Fluent Bit sidecar into kuberay-operator Deployment
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: kuberay-operator
+        namespace: ray
+      spec:
+        template:
+          spec:
+            volumes:
+              - name: kuberay-logs
+                emptyDir: {}
+              - name: fluentbit-config
+                configMap:
+                  name: kuberay-operator-fluentbit-config
+            containers:
+              - name: fluentbit
+                image: "{{ fluent_bit_container_image }}"
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 128Mi
+                  limits:
+                    cpu: 100m
+                    memory: 128Mi
+                volumeMounts:
+                - mountPath: /tmp/kuberay
+                  name: kuberay-logs
+                  readOnly: true
+                - mountPath: /fluent-bit/etc/fluent-bit.conf
+                  subPath: fluent-bit.conf
+                  name: fluentbit-config
+                  readOnly: true
+    merge_type:
+      - strategic-merge

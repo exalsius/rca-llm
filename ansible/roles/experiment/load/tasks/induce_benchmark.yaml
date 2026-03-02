@@ -1,0 +1,243 @@
+---
+- name: Set facts for benchmark template
+  set_fact:
+    llm_benchmark_iteration: "{{ item[1] | default('1') }}"
+    llm_benchmark_target_qps: "{{ item[0] | default('1') }}"
+    llm_benchmark_execution_identifier: "qps-{{ item[0] | default('1') }}-iteration-{{ item[1] | default('1') }}"
+  tags:
+    - always
+
+- name: Set fact for iteration-results folder
+  set_fact:
+    fetch_result_iter_folder: "{{ role_path }}/../../../fetched/{{ exp_global_identifier }}/results/{{ llm_benchmark_execution_identifier }}"
+  tags:
+    - always
+
+- name: Check if the directory exists
+  ansible.builtin.stat:
+    path: "{{ fetch_result_iter_folder }}"
+  register: directory_check
+  tags:
+    - always
+
+- name: Ensure the directory exists
+  file:
+    path: "{{ fetch_result_iter_folder }}"
+    state: directory
+    mode: '0755'
+  tags:
+    - always
+  when: not directory_check.stat.exists
+
+- name: Report progress
+  ansible.builtin.debug:
+    msg: "This is: {{ llm_benchmark_execution_identifier }}"
+  tags:
+    - benchmark
+  when: not directory_check.stat.exists
+
+### wait for RayService to be ready
+- name: Collect Pods matching selector
+  k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ ray_service_namespace }}"
+    label_selectors:
+      - model.name: "{{ exp_global_model_name }}"
+  register: ray_service_pods
+  tags:
+    - always
+
+- name: Wait until every container in each Pod is Ready
+  k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ ray_service_namespace }}"
+    name: "{{ item.metadata.name }}"
+  register: pod_check
+  loop: "{{ ray_service_pods.resources }}"
+  loop_control:
+    label: "{{ item.metadata.name }}"
+  retries: 300
+  delay: 10
+  until: >
+    (
+      pod_check.resources[0].status.containerStatuses
+        | map(attribute='ready')
+        | min
+    ) | bool
+  tags:
+    - always
+
+- name: Wait until all ray-service deployments are healthy
+  k8s_info:
+    api_version: ray.io/v1
+    kind: RayService
+    name: "{{ ray_service_name }}"
+    namespace: "{{ ray_service_namespace }}"
+  register: cr_info
+  until: >
+    (cr_info
+     | json_query("resources[*].status.activeServiceStatus.applicationStatuses.*.serveDeploymentStatuses")
+     | flatten
+     | map('dict2items')
+     | list
+     | flatten
+     | map(attribute='value')
+     | map(attribute='status')
+     | list
+     | unique) == ["HEALTHY"]
+  delay: 10
+  retries: 300
+  tags:
+    - always
+
+### Now the RayService is ready, we can continue
+
+- name: Apply experiment manifest for llm-benchmark
+  kubernetes.core.k8s:
+    state: present
+    template: "{{ role_path }}/templates/llm-benchmark.yaml.j2"
+  register: llm_benchmark_execution_apply_result
+  tags:
+    - benchmark
+  when: not directory_check.stat.exists
+
+- name: Record CRD information about LLM load generation
+  copy:
+    content: "{{ llm_benchmark_execution_apply_result | to_nice_json }}"
+    dest: "{{ fetch_result_iter_folder }}/apply_result_llm_benchmark_execution.json"
+  tags:
+    - benchmark
+  when: not directory_check.stat.exists
+
+- name: Configure chaos experiment, if necessary
+  ansible.builtin.include_role:
+      name: experiment/chaos
+  vars:
+    inject_chaos_anomaly: true
+    chaos_anomaly_injection_result_folder: "{{ fetch_result_iter_folder }}"
+  tags:
+    - benchmark
+  when: not directory_check.stat.exists
+
+- name: Get the current state of the llm-benchmark
+  k8s_info:
+    api_version: v1
+    kind: Pod
+    name: llm-benchmark-pod-{{ llm_benchmark_execution_identifier }}
+    namespace: "{{ llm_benchmark_namespace }}"
+  register: pod_info
+  until: pod_info|json_query('resources[*].status.phase')|unique == ["Succeeded"] or pod_info|json_query('resources[*].status.phase')|unique == ["Failed"]
+  delay: 10
+  retries: 300
+  tags:
+    - benchmark
+  when: not directory_check.stat.exists
+
+- name: Extract container status
+  set_fact:
+    container_status: "{{ pod_info.resources[0].status.containerStatuses[0] }}"
+  tags:
+    - benchmark
+  when: not directory_check.stat.exists
+
+- name: Extract container start and end time
+  set_fact:
+    llm_benchmark_start_time: "{{ container_status.state.terminated.startedAt }}"
+    llm_benchmark_end_time: "{{ container_status.state.terminated.finishedAt }}"
+  tags:
+    - benchmark
+  when: not directory_check.stat.exists
+
+- name: Get the logs of the succeeded benchmark pod
+  command: kubectl logs llm-benchmark-pod-{{ llm_benchmark_execution_identifier }} -n {{ llm_benchmark_namespace }}
+  register: pod_logs
+  tags:
+    - benchmark
+  when: not directory_check.stat.exists
+
+- name: Save the benchmark logs to a file
+  copy:
+    content: "{{ pod_logs.stdout }}"
+    dest: "{{ fetch_result_iter_folder }}/benchmark-logs.log"
+  tags:
+    - benchmark
+  when: not directory_check.stat.exists
+
+- name: Delete llm-benchmark-pod
+  kubernetes.core.k8s:
+    state: absent
+    wait: true
+    kind: Pod
+    namespace: "{{ llm_benchmark_namespace }}"
+    name: llm-benchmark-pod-{{ llm_benchmark_execution_identifier }}
+  tags:
+    - benchmark
+  when: not directory_check.stat.exists
+
+- name: Set default start and end times for fetching data
+  set_fact:
+    llm_benchmark_start_time: "{{ llm_benchmark_start_time | default(lookup('pipe', 'date -u -d \"30 seconds ago\" +\"%Y-%m-%dT%H:%M:%SZ\"'), true) }}"
+    llm_benchmark_end_time: "{{ llm_benchmark_end_time | default(lookup('pipe', 'date -u +\"%Y-%m-%dT%H:%M:%SZ\"'), true) }}"
+  tags:
+    - collect-telemetry-data
+  when:
+    - not directory_check.stat.exists
+    - llm_benchmark_start_time is not defined or llm_benchmark_end_time is not defined
+
+- name: Fetch prometheus metrics
+  ansible.builtin.include_tasks:
+    file: _fetch_metrics.yaml
+    apply:
+      tags: collect-telemetry-data
+  vars:
+    fetch_start_time: "{{ llm_benchmark_start_time }}"
+    fetch_end_time: "{{ llm_benchmark_end_time }}"
+    fetch_result_file_name: prometheus-metrics.csv
+    fetch_result_folder: "{{ fetch_result_iter_folder }}"
+  tags:
+    - collect-telemetry-data
+  when: not directory_check.stat.exists
+
+- name: Fetch loki logs
+  ansible.builtin.include_tasks:
+    file: _fetch_logs.yaml
+    apply:
+      tags: collect-telemetry-data
+  vars:
+    fetch_start_time: "{{ llm_benchmark_start_time }}"
+    fetch_end_time: "{{ llm_benchmark_end_time }}"
+    fetch_result_file_name: loki-logs.json
+    fetch_result_folder: "{{ fetch_result_iter_folder }}"
+  tags:
+    - collect-telemetry-data
+  when: not directory_check.stat.exists
+
+- name: Fetch deepflow traces
+  ansible.builtin.include_tasks:
+    file: _fetch_traces.yaml
+    apply:
+      tags: collect-telemetry-data
+  vars:
+    fetch_start_time: "{{ llm_benchmark_start_time }}"
+    fetch_end_time: "{{ llm_benchmark_end_time }}"
+    fetch_result_file_name: deepflow-traces
+    fetch_result_folder: "{{ fetch_result_iter_folder }}"
+  tags:
+    - collect-telemetry-data
+  when: not directory_check.stat.exists
+
+- name: Execute RCA collector
+  ansible.builtin.include_tasks:
+    file: _fetch_rca_data.yaml
+    apply:
+      tags:
+        - collect-telemetry-data
+  vars:
+    fetch_start_time: "{{ llm_benchmark_start_time }}"
+    fetch_end_time: "{{ llm_benchmark_end_time }}"
+    fetch_result_folder: "{{ fetch_result_iter_folder }}"
+  tags:
+    - collect-telemetry-data
+  when: not directory_check.stat.exists

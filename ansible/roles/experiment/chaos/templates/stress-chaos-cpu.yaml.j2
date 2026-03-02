@@ -1,0 +1,23 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: {{ ray_service_name }}-stress-chaos-cpu
+  namespace: chaosmesh
+spec:
+  mode: {{ stress_chaos_cpu_mode }}
+  selector:
+    namespaces:
+      - {{ stress_chaos_cpu_namespace | default(ray_service_namespace) | default('ray') }}
+    labelSelectors:
+      'model.name': {{ ray_service_name }}
+      'ray.io/serve': 'true'
+{% for key, value in (chaos_anomaly_injection_label_selectors | default({})).items() %}
+      '{{ key }}': '{{ value }}'
+{% endfor %}
+    containerNames:
+      - {{ chaos_anomaly_injection_target_container | default(ray_service_head_container_name) }}
+  stressors:
+    cpu:
+      workers: {{ stress_chaos_cpu_stressors_workers }}
+      load: {{ stress_chaos_cpu_stressors_load }}
+  duration: "{{ chaos_anomaly_injection_duration }}s"

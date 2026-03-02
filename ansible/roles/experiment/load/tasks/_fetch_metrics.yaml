@@ -1,0 +1,62 @@
+# Fetch prometheus metrics
+- name: Get GPU PCI bus IDs
+  ansible.builtin.include_tasks:
+    file: _prepare_dcgm_query.yaml
+
+- name: Read Python script for exporting prometheus metrics
+  set_fact:
+    export_metrics_python_script_content: "{{ lookup('file', '{{ role_path }}/files/export_metrics.py') }}"
+
+- name: Apply experiment manifest for prometheus-csv
+  kubernetes.core.k8s:
+    state: present
+    template: "{{ role_path }}/templates/prometheus-csv.yaml.j2"
+
+- name: Get the current state of the prometheus-csv
+  k8s_info:
+    api_version: v1
+    kind: Pod
+    name: prometheus-csv-pod
+    namespace: "{{ prometheus_csv_namespace }}"
+  register: pod_info
+  until: pod_info|json_query('resources[*].status.phase')|unique == ["Succeeded"]
+  delay: 10
+  retries: 300
+
+- name: Delete prometheus-csv-pod
+  kubernetes.core.k8s:
+    state: absent
+    wait: true
+    kind: Pod
+    namespace: "{{ prometheus_csv_namespace }}"
+    name: prometheus-csv-pod
+
+# Collect metrics from prometheus
+
+- name: Deploy metrics collector pod
+  kubernetes.core.k8s:
+    state: present
+    wait: true
+    template: "{{ role_path }}/templates/prometheus-csv-metrics-collector.yaml.j2"
+
+- name: Retrieve results from metrics collector pod
+  kubernetes.core.k8s_cp:
+    namespace: "{{ prometheus_csv_namespace }}"
+    pod: prometheus-csv-metrics-collector
+    container: collector
+    remote_path: "/app/csv/{{ fetch_result_file_name }}"
+    local_path: "{{ fetch_result_folder }}/{{ fetch_result_file_name }}"
+    state: from_pod
+
+# Cleanup
+
+- name: Delete deployed Kubernetes resources for prometheus-metrics collector
+  kubernetes.core.k8s:
+    state: absent
+    wait: true
+    template: "{{ to_delete }}"
+  loop:
+    - "{{ role_path }}/templates/prometheus-csv-metrics-collector.yaml.j2"
+    - "{{ role_path }}/templates/prometheus-csv.yaml.j2"
+  loop_control:
+    loop_var: to_delete
