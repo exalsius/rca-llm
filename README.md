@@ -1,5 +1,9 @@
 # Root Cause Analysis for Large Language Model Inference Systems
 
+Our work has been accepted to the [QualITA](https://qualitawg.github.io/) workshop co-located with the [ICPE 2026](https://icpe2026.spec.org/) conference.
+
+**Preprint:** [Beyond Microservices: Testing Web-Scale RCA Methods on GPU-Driven LLM Workloads](https://arxiv.org/abs/2603.02057)
+
 This repository contains the complete experimental framework and evaluation suite for our research on **Root Cause Analysis (RCA) in Large Language Model (LLM) inference systems**. Our work addresses the critical challenge of diagnosing performance anomalies and failures in distributed LLM deployments through comprehensive telemetry analysis and automated root cause detection.
 
 ## Research Contributions
@@ -99,3 +103,19 @@ docker build -t rca-benchmark .
 - **Chaos Engineering**: Controlled failure injection for realistic failure scenarios
 - **Evaluation**: Systematic comparison of 20+ RCA algorithms across multiple failure types
 - **Reproducibility**: Complete automation of experiment setup, execution, and data collection
+
+## How to Cite
+
+Preprint:
+
+```bibtex
+@misc{scheinert2026microservicestestingwebscalerca,
+      title={Beyond Microservices: Testing Web-Scale RCA Methods on GPU-Driven LLM Workloads},
+      author={Dominik Scheinert and Alexander Acker and Thorsten Wittkopp and Soeren Becker and Hamza Yous and Karnakar Reddy and Ibrahim Farhat and Hakim Hacid and Odej Kao},
+      year={2026},
+      eprint={2603.02057},
+      archivePrefix={arXiv},
+      primaryClass={cs.DC},
+      url={https://arxiv.org/abs/2603.02057},
+}
+```
