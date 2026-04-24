@@ -2,7 +2,8 @@
 
 Our work has been accepted to the [QualITA](https://qualitawg.github.io/) workshop co-located with the [ICPE 2026](https://icpe2026.spec.org/) conference.
 
-**Preprint:** [Beyond Microservices: Testing Web-Scale RCA Methods on GPU-Driven LLM Workloads](https://arxiv.org/abs/2603.02057)
+- **Publication:** [Beyond Microservices: Testing Web-Scale RCA Methods on GPU-Driven LLM Workloads](https://dl.acm.org/doi/10.1145/3777911.3800637)
+- **Preprint:** Find it [here](https://arxiv.org/abs/2603.02057)
 
 This repository contains the complete experimental framework and evaluation suite for our research on **Root Cause Analysis (RCA) in Large Language Model (LLM) inference systems**. Our work addresses the critical challenge of diagnosing performance anomalies and failures in distributed LLM deployments through comprehensive telemetry analysis and automated root cause detection.
 
@@ -105,6 +106,28 @@ docker build -t rca-benchmark .
 - **Reproducibility**: Complete automation of experiment setup, execution, and data collection
 
 ## How to Cite
+
+Publication:
+
+```bibtex
+@inproceedings{10.1145/3777911.3800637,
+      author = {Scheinert, Dominik and Acker, Alexander and Wittkopp, Thorsten and Becker, Soeren and Yous, Hamza and Reddy, Karnakar and Farhat, Ibrahim and Hacid, Hakim and Kao, Odej},
+      title = {Beyond Microservices: Testing Web-Scale RCA Methods on GPU-Driven LLM Workloads},
+      year = {2026},
+      isbn = {9798400723261},
+      publisher = {Association for Computing Machinery},
+      address = {New York, NY, USA},
+      url = {https://doi.org/10.1145/3777911.3800637},
+      doi = {10.1145/3777911.3800637},
+      abstract = {Large language model (LLM) services have become an integral part of search, assistance, and decision-making applications. However, unlike traditional web or microservices, the hardware and software stack enabling LLM inference deployment is of higher complexity and far less field-tested, making it more susceptible to failures that are difficult to resolve. Keeping outage costs and quality of service degradations in check depends on shortening mean time to repair, which in practice is gated by how quickly the fault is identified, located, and diagnosed. Automated root cause analysis (RCA) accelerates failure localization by identifying the system component that failed and tracing how the failure propagated. Numerous RCA methods have been developed for traditional services, using request path tracing, resource metric and log data analysis. Yet, existing RCA methods have not been designed for LLM deployments that present distinct runtime characteristics. In this study, we evaluate the effectiveness of RCA methods on a best-practice LLM inference deployment under controlled failure injections. Across 24 methods—20 metric-based, two trace-based, and two multi-source—we find that multi-source approaches achieve the highest accuracy, metric-based methods show fault-type-dependent performance, and trace-based methods largely fail. These results reveal that existing RCA tools do not generalize to LLM systems, motivating tailored analysis techniques and enhanced observability, for which we formulate guidelines.},
+      booktitle = {Companion of the 17th ACM/SPEC International Conference on Performance Engineering},
+      pages = {163–172},
+      numpages = {10},
+      keywords = {distributed systems, reliability engineering, root cause analysis, aiops, large language models},
+      location = {Italy},
+      series = {ICPE Companion '26}
+}
+```
 
 Preprint:
 
